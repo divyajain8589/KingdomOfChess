@@ -8,6 +8,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
@@ -107,6 +108,12 @@ export const matches = pgTable(
     index('matches_white_idx').on(t.whiteId),
     index('matches_black_idx').on(t.blackId),
     check('matches_distinct_players_chk', sql`${t.whiteId} <> ${t.blackId}`),
+    // Round-robin: a pair meets at most once per tournament, whoever has white.
+    uniqueIndex('matches_pair_once_uq').on(
+      t.tournamentId,
+      sql`least(${t.whiteId}, ${t.blackId})`,
+      sql`greatest(${t.whiteId}, ${t.blackId})`,
+    ),
   ],
 );
 
