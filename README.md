@@ -202,11 +202,11 @@ Client → server events take an acknowledgement callback. It returns `{ ok: tru
 - TanStack Query handles REST. Every mutation invalidates the queries it affects, and **`tournament:updated` pushes invalidate the tournament's queries**, so leaderboards, match lists and schedules update live without polling. Every data view has loading (skeleton), error (with retry) and empty states. Socket calls time out after 8 s with a toast, so nothing hangs, and the header shows the live connection state.
 - Next's `cacheComponents` is **off**. All data is fetched client-side from a separate API, so server caching would add constraints without benefit.
 - **Dates use DD/MM/YYYY.** They're stored as UTC `timestamptz` and displayed in the viewer's timezone. The create form converts local wall-clock time to an ISO instant and states which timezone it used.
-- Other stretch goals done: spectator mode for coaches, draw offers, increment time controls, and move-list navigation (click any move, use the arrow buttons, or copy the PGN).
+- Other stretch goals done: spectator mode for coaches, draw offers, increment time controls, move-list navigation (click any move, use the arrow buttons, or copy the PGN), and a promotion picker that appears only when a pawn promotes.
 
 ### Known gaps and what I'd do next
 - A Redis-backed queue and Socket.IO adapter for horizontal scale (see above).
 - Tests for the services against a real Postgres (Testcontainers), e.g. a pairing race fired from many concurrent sockets. The pure rules and the e2e smoke test are covered today.
-- A "first move" grace period and abandonment rules (auto-abort if White never moves); a proper promotion picker dialog (currently a "promote to" toggle that defaults to queen); sound and move animations for kids; rate limiting on login.
+- A "first move" grace period and abandonment rules (auto-abort if White never moves); sound and move animations for kids; rate limiting on login.
 - Socket sessions are authenticated at the handshake only. Logging out disconnects the client, but a socket that was already open isn't re-checked when its JWT expires. Next steps: re-verify periodically, or disconnect on expiry, and add an `Origin` allow-list in `allowRequest`.
 - Ratings (Elo/Glicko) to make standings-based pairing more meaningful across tournaments.

@@ -25,18 +25,37 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useLiveMatch } from "@/hooks/use-live-match";
 import { describeResult, outcomeFor } from "@/lib/format";
 import { useMe, useTournament } from "@/lib/queries";
 import type { Color, MatchState } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-const PROMOTIONS = [
-  { piece: "q", label: "♛" },
-  { piece: "r", label: "♜" },
-  { piece: "b", label: "♝" },
-  { piece: "n", label: "♞" },
-] as const;
+type PromotionPiece = "q" | "r" | "b" | "n";
+
+const PROMOTIONS: { piece: PromotionPiece; name: string; white: string; black: string }[] = [
+  { piece: "q", name: "queen", white: "♕", black: "♛" },
+  { piece: "r", name: "rook", white: "♖", black: "♜" },
+  { piece: "b", name: "bishop", white: "♗", black: "♝" },
+  { piece: "n", name: "knight", white: "♘", black: "♞" },
+];
+
+/** True if moving from→to in this position is a legal pawn promotion. */
+function isPromotionMove(fen: string, from: string, to: string): boolean {
+  try {
+    return new Chess(fen).moves({ square: from as Square, verbose: true }).some((m) => m.to === to && !!m.promotion);
+  } catch {
+    return false;
+  }
+}
 
 export default function MatchPage() {
   const { id } = useParams<{ id: string }>();
@@ -67,7 +86,7 @@ function Match({
   const isLive = state.status === "ongoing";
   const [viewPly, setViewPly] = useState<number | null>(null);
   const [selected, setSelected] = useState<Square | null>(null);
-  const [promotion, setPromotion] = useState<"q" | "r" | "b" | "n">("q");
+  const [promotionRequest, setPromotionRequest] = useState<{ from: string; to: string; fen: string } | null>(null);
 
   // Position after each ply, for move-list navigation.
   const fens = useMemo(() => {
@@ -108,9 +127,27 @@ function Match({
 
   const ownsPiece = (pieceType: string) => !!myColor && pieceType[0] === myColor[0];
 
+  // A promotion choice only stands while the position it was made in is still current and it's still my move.
+  const pendingPromotion =
+    promotionRequest && canInteract && promotionRequest.fen === state.fen ? promotionRequest : null;
+  const setPendingPromotion = (p: { from: string; to: string } | null) =>
+    setPromotionRequest(p && { ...p, fen: state.fen });
+
   function tryMove(from: string, to: string) {
     setSelected(null);
-    return live.move(from, to, promotion);
+    if (isPromotionMove(state.fen, from, to)) {
+      // Ask which piece first; returning false snaps the pawn back until then.
+      setPendingPromotion({ from, to });
+      return false;
+    }
+    return live.move(from, to);
+  }
+
+  function choosePromotion(piece: PromotionPiece) {
+    if (!pendingPromotion) return;
+    const { from, to } = pendingPromotion;
+    setPendingPromotion(null);
+    live.move(from, to, piece);
   }
 
   const top = orientation === "white" ? "black" : "white";
@@ -165,12 +202,13 @@ function Match({
                 id: `match-${state.matchId}`,
                 position: displayedFen,
                 boardOrientation: orientation,
-                allowDragging: canInteract,
-                canDragPiece: ({ piece }) => canInteract && ownsPiece(piece.pieceType),
-                onPieceDrop: ({ sourceSquare, targetSquare }) => (targetSquare ? tryMove(sourceSquare, targetSquare) : false),
+                allowDragging: canInteract && !pendingPromotion,
+                canDragPiece: ({ piece }) => canInteract && !pendingPromotion && ownsPiece(piece.pieceType),
+                onPieceDrop: ({ sourceSquare, targetSquare }) =>
+                  targetSquare && !pendingPromotion ? tryMove(sourceSquare, targetSquare) : false,
                 onPieceDrag: ({ square }) => setSelected(square as Square | null),
                 onSquareClick: ({ piece, square }) => {
-                  if (!canInteract) return;
+                  if (!canInteract || pendingPromotion) return;
                   if (selected && legalTargets.includes(square as Square)) {
                     tryMove(selected, square);
                   } else if (piece && ownsPiece(piece.pieceType)) {
@@ -187,6 +225,35 @@ function Match({
             />
           </div>
           <ChessClock {...clockProps(bottom)} />
+          <Dialog open={!!pendingPromotion} onOpenChange={(open) => !open && setPendingPromotion(null)}>
+            <DialogContent className="sm:max-w-xs" showCloseButton={false}>
+              <DialogHeader>
+                <DialogTitle>Promote pawn</DialogTitle>
+                <DialogDescription>Choose a piece for your pawn on {pendingPromotion?.to}.</DialogDescription>
+              </DialogHeader>
+              <div className="grid grid-cols-4 gap-2">
+                {PROMOTIONS.map((p) => (
+                  <Button
+                    key={p.piece}
+                    variant="outline"
+                    className="h-16"
+                    onClick={() => choosePromotion(p.piece)}
+                    aria-label={`Promote to ${p.name}`}
+                    title={p.name[0].toUpperCase() + p.name.slice(1)}
+                  >
+                    <span aria-hidden className="text-5xl leading-none">
+                      {myColor === "black" ? p.black : p.white}
+                    </span>
+                  </Button>
+                ))}
+              </div>
+              <DialogFooter>
+                <Button variant="ghost" onClick={() => setPendingPromotion(null)}>
+                  Cancel
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
           {reviewing && (
             <div className="flex items-center justify-between rounded-md bg-amber-50 px-3 py-1.5 text-sm dark:bg-amber-950/40">
               <span>
@@ -221,23 +288,6 @@ function Match({
                     </div>
                   </div>
                 )}
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-muted-foreground">Promote to</span>
-                  <div className="flex gap-1">
-                    {PROMOTIONS.map((p) => (
-                      <Button
-                        key={p.piece}
-                        size="icon-sm"
-                        variant={promotion === p.piece ? "default" : "outline"}
-                        onClick={() => setPromotion(p.piece)}
-                        aria-label={`Promote to ${p.piece}`}
-                        className="text-lg"
-                      >
-                        {p.label}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
                 <div className="grid grid-cols-2 gap-2">
                   <Button variant="outline" onClick={live.offerDraw} disabled={!!iOffered || conn !== "connected"}>
                     <Handshake /> {iOffered ? "Draw offered" : "Offer draw"}
