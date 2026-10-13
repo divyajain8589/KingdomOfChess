@@ -42,7 +42,8 @@ export interface Tournament {
 }
 
 export interface TournamentDetail extends Tournament {
-  participants: { id: string; name: string; email: string; joinedAt: string }[];
+  /** `email` is only included for coaches. */
+  participants: { id: string; name: string; email?: string; joinedAt: string }[];
   progress: { played: number; live: number; total: number };
 }
 

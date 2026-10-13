@@ -208,4 +208,5 @@ Client → server events take an acknowledgement callback. It returns `{ ok: tru
 - A Redis-backed queue and Socket.IO adapter for horizontal scale (see above).
 - Tests for the services against a real Postgres (Testcontainers), e.g. a pairing race fired from many concurrent sockets. The pure rules and the e2e smoke test are covered today.
 - A "first move" grace period and abandonment rules (auto-abort if White never moves); a proper promotion picker dialog (currently a "promote to" toggle that defaults to queen); sound and move animations for kids; rate limiting on login.
+- Socket sessions are authenticated at the handshake only. Logging out disconnects the client, but a socket that was already open isn't re-checked when its JWT expires. Next steps: re-verify periodically, or disconnect on expiry, and add an `Origin` allow-list in `allowRequest`.
 - Ratings (Elo/Glicko) to make standings-based pairing more meaningful across tournaments.
