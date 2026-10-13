@@ -82,7 +82,10 @@ export function useLiveMatch(matchId: string): LiveMatch {
   });
 
   // Whichever is newer: the REST snapshot (first load, refetch on focus) or the latest socket push.
-  const live = newest(pushed, q.data ? { state: q.data, receivedAt: q.dataUpdatedAt } : null);
+  const live = newest(
+    pushed?.state.matchId === matchId ? pushed : null, // never show a previous game's push
+    q.data ? { state: q.data, receivedAt: q.dataUpdatedAt } : null,
+  );
   const state = live?.state;
 
   const move = useCallback(

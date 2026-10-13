@@ -68,6 +68,8 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       qc.invalidateQueries({ queryKey: qk.tournamentsAll });
       qc.invalidateQueries({ queryKey: qk.schedule });
       qc.invalidateQueries({ queryKey: ["me", "matches"] });
+      // Emitted after the result is committed, so this clears a finished game's "Resume" button.
+      qc.invalidateQueries({ queryKey: qk.activeMatch });
     };
 
     s.on("connect_error", onConnectError);
