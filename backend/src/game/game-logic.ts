@@ -104,17 +104,61 @@ export function detectGameEnd(chess: Chess): GameOutcome | null {
   return null;
 }
 
-/** Loss on time — except a flag against a lone king can't be won, which FIDE scores as a draw. */
+/**
+ * Loss on time — unless the side that didn't flag can't possibly mate, which FIDE scores as a
+ * draw. Approximation of "no legal sequence leads to mate": the winner has no pawns, rooks or
+ * queens and at most one minor piece (lone king, K+N, K+B).
+ */
 export function timeoutOutcome(chess: Chess, flagged: Color): GameOutcome {
   const winner = opposite(flagged);
   const winnerCode = winner === 'white' ? 'w' : 'b';
-  const winnerHasMaterial = chess
+  const pieces = chess
     .board()
     .flat()
-    .some((sq) => sq && sq.color === winnerCode && sq.type !== 'k');
-  if (!winnerHasMaterial) return { result: 'draw', termination: 'timeout' };
+    .filter((sq) => sq && sq.color === winnerCode && sq.type !== 'k')
+    .map((sq) => sq!.type);
+  const hasMajorOrPawn = pieces.some((t) => t === 'p' || t === 'r' || t === 'q');
+  if (!hasMajorOrPawn && pieces.length <= 1) return { result: 'draw', termination: 'timeout' };
   return { result: winner, termination: 'timeout' };
 }
+
+/**
+ * Make a value safe for a PGN tag. chess.js doesn't escape tag values, so a `"` (or a trailing
+ * `\`) in a tournament or player name would produce a PGN it can't load back.
+ */
+export const pgnHeaderValue = (value: string): string =>
+  value
+    .replace(/"/g, "'")
+    .replace(/\\/g, '/')
+    .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+    .trim();
+
+/** The PGN tags every game starts with, already sanitised. */
+export function gameHeaders(info: {
+  event: string;
+  white: string;
+  black: string;
+  date: Date;
+  baseMinutes: number;
+  incrementSeconds: number;
+}): Record<string, string> {
+  return {
+    Event: pgnHeaderValue(info.event),
+    Site: 'Kingdom of Chess',
+    Date: info.date.toISOString().slice(0, 10).replace(/-/g, '.'),
+    White: pgnHeaderValue(info.white),
+    Black: pgnHeaderValue(info.black),
+    TimeControl: `${info.baseMinutes * 60}+${info.incrementSeconds}`,
+  };
+}
+
+/** The movetext of a PGN with its tag pairs dropped — a fallback when the tags themselves are corrupt. */
+export const pgnMovetext = (pgn: string): string =>
+  pgn
+    .split(/\r?\n/)
+    .filter((line) => !line.trimStart().startsWith('['))
+    .join('\n')
+    .trim();
 
 export const resultToPgn = (result: MatchResult | null): string =>
   result === 'white' ? '1-0' : result === 'black' ? '0-1' : result === 'draw' ? '1/2-1/2' : '*';

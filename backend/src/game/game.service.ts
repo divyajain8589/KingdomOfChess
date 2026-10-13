@@ -2,7 +2,7 @@ import { HttpStatus, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@
 import { Chess } from 'chess.js';
 import { and, eq, SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { AppException, forbidden, notFound } from '../common/app-exception';
+import { AppException, conflict, forbidden, notFound } from '../common/app-exception';
 import { AuthUser } from '../common/auth.decorators';
 import { DomainEvents } from '../common/domain-events';
 import { Database } from '../db/db';
@@ -13,11 +13,13 @@ import {
   clockAt,
   Color,
   detectGameEnd,
+  gameHeaders,
   GameOutcome,
   MoveError,
   MoveInput,
   msUntilFlag,
   opposite,
+  pgnMovetext,
   resultToPgn,
   switchClock,
   timeoutOutcome,
@@ -79,6 +81,11 @@ export interface MatchState {
   endedAt: string | null;
 }
 
+/** Back-off between attempts to save a result. The write is guarded on status, so retrying is safe. */
+const SAVE_RESULT_RETRY_MS = [500, 2_000, 5_000, 15_000];
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 const MOVE_ERRORS: Record<MoveError, { status: HttpStatus; message: string }> = {
   NOT_A_PLAYER: { status: HttpStatus.FORBIDDEN, message: 'Spectators cannot move' },
   NOT_YOUR_TURN: { status: HttpStatus.CONFLICT, message: "It's not your turn" },
@@ -97,11 +104,28 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
     private readonly events: DomainEvents,
   ) {}
 
-  /** After a restart, pick live games back up from the DB so clocks and flag timers keep going. */
+  /**
+   * After a restart, pick live games back up from the DB so clocks and flag timers keep going.
+   *
+   * Downtime isn't charged to anyone: each restored turn restarts at boot. The stored clocks are
+   * as of the last move (`turnStartedAt`), so the side to move also gets back whatever they had
+   * spent thinking before the crash — deliberately simple, and never unfair to the player.
+   * One unreadable row is logged and skipped rather than blocking boot.
+   */
   async onModuleInit() {
     const live = await this.loadMatchRows(eq(matches.status, 'ongoing'));
-    for (const row of live) this.adopt(row);
-    if (live.length) this.logger.log(`Restored ${live.length} live game(s)`);
+    const bootedAt = new Date();
+    let restored = 0;
+    for (const row of live) {
+      try {
+        const game = this.adopt({ ...row, match: { ...row.match, turnStartedAt: bootedAt } });
+        if (!game.ended) this.persist(game);
+        restored++;
+      } catch (err) {
+        this.logger.error(`Could not restore live match ${row.match.id}`, (err as Error).stack);
+      }
+    }
+    if (live.length) this.logger.log(`Restored ${restored}/${live.length} live game(s)`);
   }
 
   onModuleDestroy() {
@@ -113,22 +137,28 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
   /**
    * Create a match and seat both players atomically. The `active_players` primary key makes the
    * insert fail if either player is already seated elsewhere — the DB-level double-booking guard.
+   * The tournament row is locked for the transaction; completion takes the same lock, so a match
+   * can never be created in a tournament that has just closed.
    */
   async createMatch(tournamentId: string, white: PlayerRef, black: PlayerRef): Promise<MatchState> {
-    const [t] = await this.db.select().from(tournaments).where(eq(tournaments.id, tournamentId));
-    if (!t) throw notFound('Tournament');
-
-    const chess = new Chess();
     const now = new Date();
-    chess.setHeader('Event', t.name);
-    chess.setHeader('Site', 'Kingdom of Chess');
-    chess.setHeader('Date', now.toISOString().slice(0, 10).replace(/-/g, '.'));
-    chess.setHeader('White', white.name);
-    chess.setHeader('Black', black.name);
-    chess.setHeader('TimeControl', `${t.timeControlMinutes * 60}+${t.incrementSeconds}`);
-    const baseMs = t.timeControlMinutes * 60_000;
+    const { row, t } = await this.db.transaction(async (tx) => {
+      const [t] = await tx.select().from(tournaments).where(eq(tournaments.id, tournamentId)).for('update');
+      if (!t) throw notFound('Tournament');
+      if (t.status !== 'ongoing') throw conflict('NOT_ONGOING', 'This tournament is no longer running');
 
-    const row = await this.db.transaction(async (tx) => {
+      const chess = new Chess();
+      const headers = gameHeaders({
+        event: t.name,
+        white: white.name,
+        black: black.name,
+        date: now,
+        baseMinutes: t.timeControlMinutes,
+        incrementSeconds: t.incrementSeconds,
+      });
+      for (const [k, v] of Object.entries(headers)) chess.setHeader(k, v);
+      const baseMs = t.timeControlMinutes * 60_000;
+
       const [m] = await tx
         .insert(matches)
         .values({
@@ -147,7 +177,7 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
         { userId: white.id, matchId: m.id },
         { userId: black.id, matchId: m.id },
       ]);
-      return m;
+      return { row: m, t };
     });
 
     const game = this.adopt({
@@ -177,6 +207,15 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
     return this.toState(this.hydrate(row));
   }
 
+  /**
+   * Synchronous seat check against the games this process is running — including one whose
+   * result is still being saved, since the player's DB seat is only freed once that succeeds.
+   */
+  isSeated(userId: string): boolean {
+    for (const g of this.games.values()) if (g.white.id === userId || g.black.id === userId) return true;
+    return false;
+  }
+
   async activeMatchId(userId: string): Promise<string | null> {
     const [row] = await this.db
       .select({ matchId: activePlayers.matchId })
@@ -188,15 +227,10 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
   // ------------------------------------------------------------------ player actions
 
   move(user: AuthUser, matchId: string, input: MoveInput): MatchState {
-    const game = this.requireLive(matchId);
-    const color = this.colorOf(game, user.id);
     const now = Date.now();
-
     // A move that arrives after the flag fell loses on time instead of being played.
-    if (color && toColor(game.chess.turn()) === color && msUntilFlag(game.clock, now) <= 0) {
-      this.finish(game, timeoutOutcome(game.chess, color), now);
-      throw new AppException(HttpStatus.CONFLICT, 'GAME_OVER', 'Your time ran out');
-    }
+    const game = this.requireLive(matchId, user.id, now);
+    const color = this.colorOf(game, user.id);
 
     const r = tryMove(game.chess, color, input);
     if (!r.ok) {
@@ -227,18 +261,20 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
   }
 
   resign(user: AuthUser, matchId: string): MatchState {
-    const game = this.requireLive(matchId);
+    const now = Date.now();
+    const game = this.requireLive(matchId, user.id, now);
     const color = this.requirePlayer(game, user.id);
-    this.finish(game, { result: opposite(color), termination: 'resignation' }, Date.now());
+    this.finish(game, { result: opposite(color), termination: 'resignation' }, now);
     return this.toState(game);
   }
 
   offerDraw(user: AuthUser, matchId: string): MatchState {
-    const game = this.requireLive(matchId);
+    const now = Date.now();
+    const game = this.requireLive(matchId, user.id, now);
     const color = this.requirePlayer(game, user.id);
     if (game.drawOfferBy === opposite(color)) {
       // Both sides want a draw — treat a counter-offer as acceptance.
-      this.finish(game, { result: 'draw', termination: 'draw_agreement' }, Date.now());
+      this.finish(game, { result: 'draw', termination: 'draw_agreement' }, now);
     } else {
       game.drawOfferBy = color;
       this.broadcast(game);
@@ -247,13 +283,14 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
   }
 
   respondDraw(user: AuthUser, matchId: string, accept: boolean): MatchState {
-    const game = this.requireLive(matchId);
+    const now = Date.now();
+    const game = this.requireLive(matchId, user.id, now);
     const color = this.requirePlayer(game, user.id);
     if (game.drawOfferBy !== opposite(color)) {
       throw new AppException(HttpStatus.CONFLICT, 'NO_DRAW_OFFER', 'There is no draw offer to respond to');
     }
     if (accept) {
-      this.finish(game, { result: 'draw', termination: 'draw_agreement' }, Date.now());
+      this.finish(game, { result: 'draw', termination: 'draw_agreement' }, now);
     } else {
       game.drawOfferBy = null;
       this.broadcast(game);
@@ -274,33 +311,55 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
     game.chess.setHeader('Termination', outcome.termination.replace(/_/g, ' '));
     this.broadcast(game);
 
-    const pgn = game.chess.pgn();
+    const values = {
+      status: 'completed' as const,
+      result: outcome.result,
+      termination: outcome.termination,
+      pgn: game.chess.pgn(),
+      fen: game.chess.fen(),
+      whiteTimeMs: t.whiteMs,
+      blackTimeMs: t.blackMs,
+      turnStartedAt: new Date(now),
+      endedAt: new Date(now),
+    };
     game.writes = game.writes
-      .then(() =>
-        this.db.transaction(async (tx) => {
-          await tx
-            .update(matches)
-            .set({
-              status: 'completed',
-              result: outcome.result,
-              termination: outcome.termination,
-              pgn,
-              fen: game.chess.fen(),
-              whiteTimeMs: t.whiteMs,
-              blackTimeMs: t.blackMs,
-              turnStartedAt: new Date(now),
-              endedAt: new Date(now),
-            })
-            .where(and(eq(matches.id, game.matchId), eq(matches.status, 'ongoing')));
-          await tx.delete(activePlayers).where(eq(activePlayers.matchId, game.matchId));
-        }),
-      )
-      .then(() => {
+      .then(() => this.saveResult(game.matchId, values))
+      .then((saved) => {
+        // Until the result is stored the game stays in memory (players stay seated, as in the DB).
+        if (!saved) return;
         this.games.delete(game.matchId);
         this.events.emit('match.ended', { matchId: game.matchId, tournamentId: game.tournamentId });
         this.events.emit('tournament.changed', { tournamentId: game.tournamentId });
       })
-      .catch((err) => this.logger.error(`Failed to save result of ${game.matchId}`, err));
+      .catch((err) => this.logger.error(`Failed to wrap up ${game.matchId}`, (err as Error).stack));
+  }
+
+  /** Store a final result and free both seats, retrying with back-off. Resolves false if it never lands. */
+  private async saveResult(matchId: string, values: Partial<Match>): Promise<boolean> {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await this.db.transaction(async (tx) => {
+          await tx
+            .update(matches)
+            .set(values)
+            .where(and(eq(matches.id, matchId), eq(matches.status, 'ongoing')));
+          await tx.delete(activePlayers).where(eq(activePlayers.matchId, matchId));
+        });
+        return true;
+      } catch (err) {
+        const delay = SAVE_RESULT_RETRY_MS[attempt - 1];
+        if (delay === undefined) {
+          this.logger.error(
+            `GAVE UP saving the result of match ${matchId} after ${attempt} attempts — it stays 'ongoing' ` +
+              `in the DB with both players seated. Intended result: ${values.result} (${values.termination})`,
+            (err as Error).stack,
+          );
+          return false;
+        }
+        this.logger.warn(`Saving result of ${matchId} failed (attempt ${attempt}), retrying in ${delay}ms: ${(err as Error).message}`);
+        await sleep(delay);
+      }
+    }
   }
 
   private persist(game: LiveGame) {
@@ -366,9 +425,19 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private requireLive(matchId: string): LiveGame {
+  /**
+   * The game, if still in progress. Also where a fallen flag is noticed before the timer fires:
+   * once time is up, no move, resignation or draw can change the result.
+   */
+  private requireLive(matchId: string, userId: string, now: number): LiveGame {
     const game = this.games.get(matchId);
     if (!game || game.ended) throw new AppException(HttpStatus.CONFLICT, 'GAME_OVER', 'This game is not in progress');
+    if (msUntilFlag(game.clock, now) <= 0) {
+      const flagged = game.clock.turn;
+      this.finish(game, timeoutOutcome(game.chess, flagged), now);
+      const message = this.colorOf(game, userId) === flagged ? 'Your time ran out' : 'Time ran out';
+      throw new AppException(HttpStatus.CONFLICT, 'GAME_OVER', message);
+    }
     return game;
   }
 
@@ -387,12 +456,20 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
     if (user.id !== whiteId && user.id !== blackId) throw forbidden('You are not playing in this match');
   }
 
-  /** Register a live game in memory (new or restored), arm its flag timer, and flag it if already out of time. */
+  /**
+   * Register a live game in memory (new or restored) and arm its flag timer — or end it right away
+   * if the restored position is already over (say the last move was saved but not the result)
+   * or the side to move is out of time.
+   */
   private adopt(row: MatchRow): LiveGame {
     const game = this.hydrate(row);
     this.games.set(game.matchId, game);
-    if (msUntilFlag(game.clock, Date.now()) <= 0) {
-      this.finish(game, timeoutOutcome(game.chess, game.clock.turn), Date.now());
+    const now = Date.now();
+    const outcome = detectGameEnd(game.chess);
+    if (outcome) {
+      this.finish(game, outcome, now);
+    } else if (msUntilFlag(game.clock, now) <= 0) {
+      this.finish(game, timeoutOutcome(game.chess, game.clock.turn), now);
     } else {
       this.scheduleFlag(game);
     }
@@ -401,8 +478,7 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
 
   private hydrate(row: MatchRow): LiveGame {
     const m = row.match;
-    const chess = new Chess();
-    if (m.pgn) chess.loadPgn(m.pgn);
+    const chess = this.loadBoard(row);
     const verbose = chess.history({ verbose: true });
     const last = verbose[verbose.length - 1];
     return {
@@ -429,6 +505,42 @@ export class GameService implements OnModuleInit, OnModuleDestroy {
           : null,
       writes: Promise.resolve(),
     };
+  }
+
+  /**
+   * Rebuild the board from the stored PGN. Older rows can hold tags chess.js won't parse (an
+   * unescaped `"` in a name); then replay just the moves under freshly built tags, and as a last
+   * resort start from the stored FEN without the move list — never fail boot or a page load.
+   */
+  private loadBoard(row: MatchRow): Chess {
+    const m = row.match;
+    const chess = new Chess();
+    if (!m.pgn) return chess;
+    try {
+      chess.loadPgn(m.pgn);
+      return chess;
+    } catch (err) {
+      this.logger.warn(`Match ${m.id} has an unreadable PGN (${(err as Error).message}); rebuilding it`);
+    }
+    try {
+      const rebuilt = new Chess();
+      rebuilt.loadPgn(pgnMovetext(m.pgn));
+      const headers = gameHeaders({
+        event: row.tournamentName,
+        white: row.white.name,
+        black: row.black.name,
+        date: m.startedAt,
+        baseMinutes: row.baseMinutes,
+        incrementSeconds: row.incrementSeconds,
+      });
+      for (const [k, v] of Object.entries(headers)) rebuilt.setHeader(k, v);
+      if (m.result) rebuilt.setHeader('Result', resultToPgn(m.result));
+      if (m.termination) rebuilt.setHeader('Termination', m.termination.replace(/_/g, ' '));
+      return rebuilt;
+    } catch {
+      this.logger.warn(`Match ${m.id}: moves unreadable too; falling back to the stored FEN`);
+      return new Chess(m.fen);
+    }
   }
 
   private async loadMatchRows(where: SQL): Promise<MatchRow[]> {

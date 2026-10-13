@@ -56,8 +56,16 @@ export class MatchmakingService {
     };
   }
 
-  /** Enter the queue. Returns the new match straight away if someone suitable was waiting. */
-  async join(user: AuthUser, tournamentId: string): Promise<{ queue: QueueStatus; match: MatchState | null }> {
+  /**
+   * Enter the queue. Returns the new match straight away if someone suitable was waiting.
+   * `isConnected` is checked once the async checks are done: a client that went away meanwhile
+   * is neither queued nor paired (its disconnect handler has already run).
+   */
+  async join(
+    user: AuthUser,
+    tournamentId: string,
+    isConnected: () => boolean = () => true,
+  ): Promise<{ queue: QueueStatus; match: MatchState | null }> {
     if (user.role !== 'student') throw new AppException(HttpStatus.FORBIDDEN, 'FORBIDDEN', 'Only students can play');
 
     // ---- async: gather facts and check the rules
@@ -79,8 +87,13 @@ export class MatchmakingService {
     if (violation) throw new AppException(HttpStatus.CONFLICT, violation.code, violation.message);
 
     // ---- sync: claim a slot or an opponent atomically
+    if (!isConnected()) return { queue: this.status(user.id, tournamentId), match: null };
     if (this.pairing.has(user.id)) {
       throw new AppException(HttpStatus.CONFLICT, 'IN_MATCH', 'Your game is being set up');
+    }
+    // `activeMatchId` above may be stale (another tab got paired while we awaited); this isn't.
+    if (this.games.isSeated(user.id)) {
+      throw new AppException(HttpStatus.CONFLICT, 'IN_MATCH', 'Finish your current game first');
     }
     const elsewhere = this.queuedIn.get(user.id);
     if (elsewhere && elsewhere !== tournamentId) this.remove(user.id);
@@ -88,7 +101,8 @@ export class MatchmakingService {
     const queue = this.queues.get(tournamentId) ?? [];
     this.queues.set(tournamentId, queue);
     const points = new Map(standings.map((s) => [s.userId, s.points]));
-    const opponent = pickOpponent(user.id, queue, played, points);
+    const candidates = queue.filter((w) => !this.games.isSeated(w.userId));
+    const opponent = pickOpponent(user.id, candidates, played, points);
 
     if (!opponent) {
       if (!queue.some((w) => w.userId === user.id)) {
@@ -123,10 +137,18 @@ export class MatchmakingService {
       return { queue: this.status(user.id, tournamentId), match };
     } catch (err) {
       this.logger.warn(`Pairing failed in ${tournamentId}: ${(err as Error).message}`);
-      // Put the waiting player back where they were; the requester gets an error and can retry.
-      if (!this.queuedIn.has(waiter.userId)) {
+      // The tournament closed (or vanished) under us: its queue is gone, so don't refill it.
+      const code = err instanceof AppException ? (err.getResponse() as { code?: string }).code : undefined;
+      if (code === 'NOT_ONGOING' || code === 'NOT_FOUND') {
+        this.realtime.toUser(waiter.userId, 'queue:status', { tournamentId, queued: false, waiting: 0 });
+        throw err;
+      }
+      // Put the waiting player back where they were (unless they got a game meanwhile);
+      // the requester gets an error and can retry.
+      if (!this.queuedIn.has(waiter.userId) && !this.games.isSeated(waiter.userId)) {
         queue.unshift(waiter);
         this.queuedIn.set(waiter.userId, tournamentId);
+        this.broadcastWaiting(tournamentId);
       }
       throw new AppException(HttpStatus.CONFLICT, 'PAIRING_FAILED', 'Could not start the game — please try again');
     } finally {

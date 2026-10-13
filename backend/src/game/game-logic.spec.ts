@@ -1,5 +1,16 @@
 import { Chess } from 'chess.js';
-import { clockAt, detectGameEnd, msUntilFlag, resultToPgn, switchClock, timeoutOutcome, tryMove } from './game-logic';
+import {
+  clockAt,
+  detectGameEnd,
+  gameHeaders,
+  msUntilFlag,
+  pgnHeaderValue,
+  pgnMovetext,
+  resultToPgn,
+  switchClock,
+  timeoutOutcome,
+  tryMove,
+} from './game-logic';
 
 describe('tryMove — move/turn validation', () => {
   it('applies a legal move for the side to move', () => {
@@ -132,6 +143,74 @@ describe('clock', () => {
       result: 'draw',
       termination: 'timeout',
     });
+  });
+});
+
+describe('timeoutOutcome — can the other side still mate?', () => {
+  // White flags; black keeps the listed material (plus a white pawn so the position isn't a dead draw).
+  const blackHas = (pieces: string) => new Chess(`k7/${pieces}/8/8/8/8/P7/K7 w - - 0 1`);
+
+  it('is a draw when the opponent has only a king and one knight or bishop', () => {
+    expect(timeoutOutcome(blackHas('n7'), 'white')).toEqual({ result: 'draw', termination: 'timeout' });
+    expect(timeoutOutcome(blackHas('b7'), 'white')).toEqual({ result: 'draw', termination: 'timeout' });
+  });
+
+  it('is a win when the opponent has a pawn, rook, queen or two minor pieces', () => {
+    expect(timeoutOutcome(blackHas('p7'), 'white').result).toBe('black');
+    expect(timeoutOutcome(blackHas('r7'), 'white').result).toBe('black');
+    expect(timeoutOutcome(blackHas('q7'), 'white').result).toBe('black');
+    expect(timeoutOutcome(blackHas('nn6'), 'white').result).toBe('black');
+    expect(timeoutOutcome(blackHas('bn6'), 'white').result).toBe('black');
+  });
+
+  it('applies the same rule when black flags', () => {
+    expect(timeoutOutcome(new Chess('k7/p7/8/8/8/8/8/K6B b - - 0 1'), 'black').result).toBe('draw');
+    expect(timeoutOutcome(new Chess('k7/p7/8/8/8/8/8/K5BB b - - 0 1'), 'black').result).toBe('white');
+  });
+});
+
+describe('PGN helpers', () => {
+  it('neutralises characters that break PGN tags', () => {
+    expect(pgnHeaderValue('Cup "Final"')).toBe("Cup 'Final'");
+    expect(pgnHeaderValue('back\\slash\\')).toBe('back/slash/');
+    expect(pgnHeaderValue('two\nlines\t ')).toBe('two lines');
+    expect(pgnHeaderValue('Plain [name]')).toBe('Plain [name]');
+  });
+
+  it('produces a PGN chess.js can load back', () => {
+    const chess = new Chess();
+    chess.setHeader('Event', pgnHeaderValue('Spring "Open" \\'));
+    chess.move('e4');
+    const copy = new Chess();
+    expect(() => copy.loadPgn(chess.pgn())).not.toThrow();
+    expect(copy.getHeaders().Event).toBe("Spring 'Open' /");
+  });
+
+  it('builds sanitised starting tags', () => {
+    const h = gameHeaders({
+      event: 'Cup "Final"',
+      white: 'Ann "The Rook"',
+      black: 'Bob',
+      date: new Date('2026-03-04T12:00:00Z'),
+      baseMinutes: 5,
+      incrementSeconds: 3,
+    });
+    expect(h).toEqual({
+      Event: "Cup 'Final'",
+      Site: 'Kingdom of Chess',
+      Date: '2026.03.04',
+      White: "Ann 'The Rook'",
+      Black: 'Bob',
+      TimeControl: '300+3',
+    });
+  });
+
+  it('recovers the moves from a PGN whose tags are corrupt', () => {
+    const bad = '[Event "Cup "Final""]\n[White "A"]\n\n1. e4 e5 2. Nf3 *';
+    expect(() => new Chess().loadPgn(bad)).toThrow();
+    const chess = new Chess();
+    chess.loadPgn(pgnMovetext(bad));
+    expect(chess.history()).toEqual(['e4', 'e5', 'Nf3']);
   });
 });
 

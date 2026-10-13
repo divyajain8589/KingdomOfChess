@@ -67,7 +67,7 @@ export class GameGateway implements OnGatewayInit, OnGatewayDisconnect {
   queueJoin(@ConnectedSocket() s: AuthedSocket, @MessageBody() body: unknown) {
     return this.handle(() => {
       const { tournamentId } = parsePayload(TournamentRefDto, body);
-      return this.matchmaking.join(s.data.user, tournamentId);
+      return this.matchmaking.join(s.data.user, tournamentId, () => s.connected);
     });
   }
 

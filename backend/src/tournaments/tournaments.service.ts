@@ -21,6 +21,9 @@ const whiteUser = alias(users, 'white_user');
 const blackUser = alias(users, 'black_user');
 const winnerUser = alias(users, 'winner_user');
 
+/** The pool or an open transaction. */
+type Executor = Pick<Database, 'select'>;
+
 const ruleError = (v: RuleViolation) => new AppException(HttpStatus.CONFLICT, v.code, v.message);
 
 @Injectable()
@@ -62,7 +65,9 @@ export class TournamentsService {
 
   async get(user: AuthUser, id: string) {
     const t = await this.findVisible(user, id);
-    const participants = await this.participants(id);
+    const all = await this.participants(id);
+    // Emails are for the coach's roster; students only see names.
+    const participants = user.role === 'coach' ? all : all.map(({ email: _email, ...p }) => p);
     const [winner] = t.winnerId ? await this.db.select({ name: users.name }).from(users).where(eq(users.id, t.winnerId)) : [];
     const progress = await this.progress(id, participants.length);
     return {
@@ -109,9 +114,10 @@ export class TournamentsService {
     return rows;
   }
 
-  async standings(tournamentId: string): Promise<Standing[]> {
-    const players = await this.participants(tournamentId);
-    const games = await this.db
+  /** `db` lets completion read standings inside its own transaction. */
+  async standings(tournamentId: string, db: Executor = this.db): Promise<Standing[]> {
+    const players = await this.participants(tournamentId, db);
+    const games = await db
       .select({ whiteId: matches.whiteId, blackId: matches.blackId, result: matches.result })
       .from(matches)
       .where(and(eq(matches.tournamentId, tournamentId), eq(matches.status, 'completed')));
@@ -121,8 +127,8 @@ export class TournamentsService {
     );
   }
 
-  async participants(tournamentId: string) {
-    return this.db
+  async participants(tournamentId: string, db: Executor = this.db) {
+    return db
       .select({ id: users.id, name: users.name, email: users.email, joinedAt: tournamentParticipants.joinedAt })
       .from(tournamentParticipants)
       .innerJoin(users, eq(users.id, tournamentParticipants.userId))
@@ -282,23 +288,30 @@ export class TournamentsService {
     if (live === 0 && total > 0 && played >= total) await this.complete(tournamentId, { force: false });
   }
 
-  /** Close the tournament and record the winner (null when the lead is shared on every tiebreak). */
+  /**
+   * Close the tournament and record the winner (null when the lead is shared on every tiebreak).
+   * Runs under a lock on the tournament row — the same lock match creation takes — so no game can
+   * start between "no live games" and "completed".
+   */
   private async complete(id: string, { force }: { force: boolean }) {
-    const [{ live }] = await this.db
-      .select({ live: count() })
-      .from(matches)
-      .where(and(eq(matches.tournamentId, id), eq(matches.status, 'ongoing')));
-    if (live > 0) {
-      if (!force) return;
-      throw conflict('LIVE_MATCHES', `Wait for the ${live} live game(s) to finish before completing`);
-    }
-    const winner = pickWinner(await this.standings(id));
-    // Guarded update: only one caller can flip ongoing → completed.
-    const done = await this.db
-      .update(tournaments)
-      .set({ status: 'completed', winnerId: winner?.userId ?? null, completedAt: new Date(), updatedAt: new Date() })
-      .where(and(eq(tournaments.id, id), eq(tournaments.status, 'ongoing')))
-      .returning({ id: tournaments.id });
+    const done = await this.db.transaction(async (tx) => {
+      await tx.select({ id: tournaments.id }).from(tournaments).where(eq(tournaments.id, id)).for('update');
+      const [{ live }] = await tx
+        .select({ live: count() })
+        .from(matches)
+        .where(and(eq(matches.tournamentId, id), eq(matches.status, 'ongoing')));
+      if (live > 0) {
+        if (!force) return [];
+        throw conflict('LIVE_MATCHES', `Wait for the ${live} live game(s) to finish before completing`);
+      }
+      const winner = pickWinner(await this.standings(id, tx));
+      // Guarded update: only one caller can flip ongoing → completed.
+      return tx
+        .update(tournaments)
+        .set({ status: 'completed', winnerId: winner?.userId ?? null, completedAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(tournaments.id, id), eq(tournaments.status, 'ongoing')))
+        .returning({ id: tournaments.id });
+    });
     if (done.length) {
       this.events.emit('tournament.closed', { tournamentId: id });
       this.events.emit('tournament.changed', { tournamentId: id });
