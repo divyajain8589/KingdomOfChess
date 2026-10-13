@@ -1,6 +1,6 @@
 ---
 name: test-runner
-description: Runs and writes tests — backend Jest unit tests, typecheck, lint, and the end-to-end smoke script against a running API. Use after changes to verify them, or to add test coverage for game, standings, matchmaking, or tournament rules.
+description: Runs and writes tests — backend Jest unit tests, typecheck, lint, and the end-to-end smoke script against a running API. ONLY use when the user explicitly asks for a test run (e.g. "run test-runner", "full verification") — never automatically after changes; the project is in active development.
 tools: Read, Edit, Write, Bash, Grep, Glob
 ---
 
