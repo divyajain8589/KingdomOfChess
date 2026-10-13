@@ -1,5 +1,5 @@
 import { Chess } from 'chess.js';
-import { clockAt, detectGameEnd, msUntilFlag, switchClock, timeoutOutcome, tryMove } from './game-logic';
+import { clockAt, detectGameEnd, msUntilFlag, resultToPgn, switchClock, timeoutOutcome, tryMove } from './game-logic';
 
 describe('tryMove — move/turn validation', () => {
   it('applies a legal move for the side to move', () => {
@@ -97,6 +97,23 @@ describe('clock', () => {
     expect(r).toEqual({ clock: { whiteMs: 53_000, blackMs: 60_000, turnStartedAt: 11_000, turn: 'black' } });
   });
 
+  it("adds the increment to black's clock when black moves", () => {
+    const blackToMove = { ...start, turn: 'black' as const };
+    expect(switchClock(blackToMove, 6_000, 2_000)).toEqual({
+      clock: { whiteMs: 60_000, blackMs: 57_000, turnStartedAt: 6_000, turn: 'white' },
+    });
+  });
+
+  it('does not add time when now is before turnStartedAt', () => {
+    expect(clockAt(start, 0)).toEqual({ whiteMs: 60_000, blackMs: 60_000 });
+  });
+
+  it('flags black exactly when the clock reaches zero', () => {
+    const blackToMove = { ...start, turn: 'black' as const };
+    expect(msUntilFlag(blackToMove, 61_000)).toBe(0);
+    expect(switchClock(blackToMove, 61_000, 5_000)).toEqual({ flagged: 'black' });
+  });
+
   it('flags a move that arrives after time ran out', () => {
     expect(switchClock(start, 61_000, 0)).toEqual({ flagged: 'white' });
   });
@@ -107,5 +124,22 @@ describe('clock', () => {
       result: 'draw',
       termination: 'timeout',
     });
+  });
+
+  it('scores a black flag as a white win, or a draw if white has a lone king', () => {
+    expect(timeoutOutcome(new Chess(), 'black')).toEqual({ result: 'white', termination: 'timeout' });
+    expect(timeoutOutcome(new Chess('8/8/8/8/8/8/q7/K6k w - - 0 1'), 'black')).toEqual({
+      result: 'draw',
+      termination: 'timeout',
+    });
+  });
+});
+
+describe('resultToPgn', () => {
+  it('maps results to PGN result tags', () => {
+    expect(resultToPgn('white')).toBe('1-0');
+    expect(resultToPgn('black')).toBe('0-1');
+    expect(resultToPgn('draw')).toBe('1/2-1/2');
+    expect(resultToPgn(null)).toBe('*');
   });
 });

@@ -58,6 +58,53 @@ describe('computeStandings', () => {
     expect(pickWinner(s)).toBeNull();
   });
 
+  it('counts half of a drawn opponent\'s score in Sonneborn–Berger', () => {
+    // a: ½+½ = 1, b: ½+1 = 1.5, c: ½, d: 0.
+    const s = computeStandings(players, [
+      { whiteId: 'a', blackId: 'b', result: 'draw' },
+      { whiteId: 'c', blackId: 'a', result: 'draw' },
+      { whiteId: 'd', blackId: 'b', result: 'black' },
+    ]);
+    const sb = Object.fromEntries(s.map((r) => [r.userId, r.sonnebornBerger]));
+    expect(sb).toEqual({ a: 1, b: 0.5, c: 0.5, d: 0 }); // a = ½·1.5 + ½·0.5; b = ½·1 + 1·0
+  });
+
+  it('falls back to wins when points and Sonneborn–Berger are level', () => {
+    const ps = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((id) => ({ id, name: id.toUpperCase() }));
+    const s = computeStandings(ps, [
+      { whiteId: 'a', blackId: 'c', result: 'white' },
+      { whiteId: 'd', blackId: 'a', result: 'white' },
+      { whiteId: 'b', blackId: 'e', result: 'draw' },
+      { whiteId: 'b', blackId: 'f', result: 'draw' },
+      { whiteId: 'c', blackId: 'g', result: 'draw' },
+    ]);
+    const a = s.find((r) => r.userId === 'a')!;
+    const b = s.find((r) => r.userId === 'b')!;
+    expect([a.points, a.sonnebornBerger, a.wins]).toEqual([1, 0.5, 1]);
+    expect([b.points, b.sonnebornBerger, b.wins]).toEqual([1, 0.5, 0]);
+    expect(s.slice(0, 3).map((r) => [r.userId, r.rank])).toEqual([
+      ['d', 1],
+      ['a', 2],
+      ['b', 3],
+    ]);
+  });
+
+  it('shares rank 1 among three level players and skips to 4 for the next', () => {
+    // Cycle: a beats b, b beats c, c beats a → 1 pt, SB 1, 1 win each. d has not played.
+    const s = computeStandings(players, [
+      { whiteId: 'a', blackId: 'b', result: 'white' },
+      { whiteId: 'b', blackId: 'c', result: 'white' },
+      { whiteId: 'c', blackId: 'a', result: 'white' },
+    ]);
+    expect(s.map((r) => [r.userId, r.rank])).toEqual([
+      ['a', 1],
+      ['b', 1],
+      ['c', 1],
+      ['d', 4],
+    ]);
+    expect(pickWinner(s)).toBeNull();
+  });
+
   it('ignores games with players outside the list', () => {
     const s = computeStandings(players.slice(0, 2), [{ whiteId: 'a', blackId: 'zzz', result: 'white' }]);
     expect(s.every((r) => r.played === 0)).toBe(true);
