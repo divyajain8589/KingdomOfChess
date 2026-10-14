@@ -48,13 +48,13 @@ export function MatchList({
     <div className="@container space-y-6">
       {live.length > 0 && (
         <section className="space-y-3">
-          <p className="eyebrow">— Live now</p>
+          <p className="eyebrow">Live now</p>
           <Rows matches={live} perspective={perspective} showTournament={showTournament} />
         </section>
       )}
       {done.length > 0 && (
         <section className="space-y-3">
-          {live.length > 0 && <p className="eyebrow">— Finished</p>}
+          {live.length > 0 && <p className="eyebrow">Finished</p>}
           <Rows matches={done} perspective={perspective} showTournament={showTournament} />
         </section>
       )}

@@ -36,7 +36,7 @@ export function emitAck<T>(event: string, payload: unknown, timeoutMs = 8000): P
   const s = getSocket();
   return new Promise<T>((resolve, reject) => {
     if (!s.connected) {
-      reject(new ApiError("Not connected to the game server — reconnecting…", "DISCONNECTED", 0));
+      reject(new ApiError("Not connected to the game server. Reconnecting…", "DISCONNECTED", 0));
       return;
     }
     s.timeout(timeoutMs).emit(event, payload, (err: Error | null, ack: Ack<T>) => {

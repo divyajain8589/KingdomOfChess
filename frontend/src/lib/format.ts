@@ -53,7 +53,7 @@ export const resultScore = (r: MatchResult | null) =>
 export function describeResult(result: MatchResult | null, termination: MatchTermination | null) {
   if (!result || !termination) return "In progress";
   if (result === "draw") {
-    if (termination === "timeout") return "Draw — time ran out but the opponent couldn't mate";
+    if (termination === "timeout") return "Draw: time ran out but the opponent couldn't mate";
     return `Draw by ${TERMINATION_LABEL[termination]}`;
   }
   return `${result === "white" ? "White" : "Black"} won by ${TERMINATION_LABEL[termination]}`;

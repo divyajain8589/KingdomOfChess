@@ -143,7 +143,7 @@ export function MoveList({
   return (
     <Card className={cn("gap-0 py-0", className)}>
       <div className="flex items-center justify-between gap-3 px-5 pt-4 pb-3">
-        <p className="eyebrow">— Moves</p>
+        <p className="eyebrow">Moves</p>
         <div className="flex items-center gap-2">
           {!empty && <span className="font-mono text-[12px] font-bold text-muted-foreground tabular-nums">Move {moveNo}</span>}
           {!empty && (

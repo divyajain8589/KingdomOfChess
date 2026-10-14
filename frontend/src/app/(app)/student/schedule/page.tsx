@@ -203,7 +203,7 @@ function History() {
         <div className="space-y-6">
           {groupByMonth(history.data).map(([month, matches]) => (
             <div key={month} className="space-y-2">
-              <p className="eyebrow">— {month}</p>
+              <p className="eyebrow">{month}</p>
               <MatchList matches={matches} perspective={me.data?.id} showTournament emptyText="No games yet" />
             </div>
           ))}

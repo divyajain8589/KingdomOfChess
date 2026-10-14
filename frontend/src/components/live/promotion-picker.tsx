@@ -54,7 +54,7 @@ export function PromotionPicker({
         }}
       >
         <DialogHeader className="pr-0">
-          <p className="eyebrow">— Promotion{square ? ` on ${square}` : ""}</p>
+          <p className="eyebrow">Promotion{square ? ` on ${square}` : ""}</p>
           <DialogTitle>Pick your new piece</DialogTitle>
           <DialogDescription>Your pawn made it to the end!</DialogDescription>
         </DialogHeader>

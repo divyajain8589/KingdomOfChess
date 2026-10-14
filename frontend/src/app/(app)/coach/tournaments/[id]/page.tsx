@@ -379,7 +379,7 @@ function TournamentActions({ t }: { t: TournamentDetail }) {
       <Dialog open={editing} onOpenChange={setEditing}>
         <DialogContent className="gap-0 p-0 max-sm:pb-0 sm:max-w-lg">
           <DialogHeader className="border-b border-border p-6 pr-14">
-            <p className="eyebrow">— Edit tournament</p>
+            <p className="eyebrow">Edit tournament</p>
             <DialogTitle>{t.name}</DialogTitle>
             <DialogDescription>
               {t.status === "ongoing"

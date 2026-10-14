@@ -171,7 +171,7 @@ function ChampionBanner({ lb }: { lb: Leaderboard }) {
           <CrownGlyph className="w-6 fill-gold" />
         </span>
         <div className="min-w-0">
-          <p className="text-eyebrow text-brand-orange uppercase">— Champion</p>
+          <p className="text-eyebrow text-brand-orange uppercase">Champion</p>
           {lb.winner ? (
             <p className="mt-1 text-h2 text-primary-foreground">
               {lb.winner.name} <span className="font-mono text-brand-orange">{pts(lb.winner.points)}</span>

@@ -59,7 +59,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       qc.invalidateQueries({ queryKey: qk.activeMatch });
       qc.invalidateQueries({ queryKey: qk.schedule });
       if (pathRef.current !== `/matches/${matchId}`) {
-        toast.success("Opponent found — game on!");
+        toast.success("Opponent found. Game on!");
         router.push(`/matches/${matchId}`);
       }
     };
