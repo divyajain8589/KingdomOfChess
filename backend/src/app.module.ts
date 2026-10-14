@@ -8,6 +8,7 @@ import { DbModule } from './db/db.module';
 import { GameModule } from './game/game.module';
 import { MatchesModule } from './matches/matches.module';
 import { TournamentsModule } from './tournaments/tournaments.module';
+import { UsersModule } from './users/users.module';
 
 @Controller('health')
 class HealthController {
@@ -27,6 +28,7 @@ class HealthController {
     TournamentsModule,
     GameModule,
     MatchesModule,
+    UsersModule,
   ],
   controllers: [HealthController],
 })

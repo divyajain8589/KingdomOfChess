@@ -1,11 +1,12 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { CalendarDays, ChevronDown, Loader2, LogOut, Swords } from "lucide-react";
+import { CalendarDays, ChevronDown, KeyRound, Loader2, LogOut, Swords, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
+import { ChangePasswordDialog } from "@/components/change-password-dialog";
 import { Logo, LogoMark } from "@/components/logo";
 import { PlayerAvatar } from "@/components/player-avatar";
 import { homeFor } from "@/components/role-gate";
@@ -26,7 +27,10 @@ import type { User } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const NAV = {
-  coach: [{ href: "/coach", label: "Tournaments" }],
+  coach: [
+    { href: "/coach", label: "Tournaments" },
+    { href: "/coach/students", label: "Students" },
+  ],
   student: [
     { href: "/student", label: "Tournaments" },
     { href: "/student/schedule", label: "My schedule" },
@@ -79,6 +83,7 @@ export function ConnectionDot({ className }: { className?: string }) {
 function UserMenu({ me }: { me: User }) {
   const qc = useQueryClient();
   const [signingOut, setSigningOut] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
   const firstName = me.name.split(/\s+/)[0];
 
   async function logout() {
@@ -97,46 +102,60 @@ function UserMenu({ me }: { me: User }) {
   }
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        aria-label={`Account menu for ${me.name}`}
-        className="focus-ring inline-flex size-10 items-center justify-center rounded-full transition-colors hover:bg-surface-inset aria-expanded:bg-surface-inset md:h-10 md:w-auto md:gap-2 md:pr-3 md:pl-1"
-      >
-        <PlayerAvatar name={me.name} userId={me.id} size="sm" />
-        <span className="hidden max-w-32 truncate text-[14px] font-bold md:inline">{firstName}</span>
-        <ChevronDown className="hidden size-4 text-muted-foreground md:block" aria-hidden />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" sideOffset={8} className="w-60">
-        <DropdownMenuLabel className="flex items-center gap-3 px-2 py-2">
-          <PlayerAvatar name={me.name} userId={me.id} size="md" />
-          <span className="min-w-0">
-            <span className="block truncate text-[14px] font-bold text-foreground">{me.name}</span>
-            <span className="block text-eyebrow text-muted-foreground uppercase">
-              {me.role === "coach" ? "Coach" : "Student"}
-            </span>
-          </span>
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {me.role === "student" && (
-          <DropdownMenuItem asChild>
-            <Link href="/student/schedule">
-              <CalendarDays /> My schedule
-            </Link>
-          </DropdownMenuItem>
-        )}
-        <DropdownMenuItem
-          variant="destructive"
-          disabled={signingOut}
-          onSelect={(e) => {
-            e.preventDefault();
-            void logout();
-          }}
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          aria-label={`Account menu for ${me.name}`}
+          className="focus-ring inline-flex size-10 items-center justify-center rounded-full transition-colors hover:bg-surface-inset aria-expanded:bg-surface-inset md:h-10 md:w-auto md:gap-2 md:pr-3 md:pl-1"
         >
-          {signingOut ? <Loader2 className="animate-spin" /> : <LogOut />}
-          {signingOut ? "Signing out…" : "Sign out"}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          <PlayerAvatar name={me.name} userId={me.id} size="sm" />
+          <span className="hidden max-w-32 truncate text-[14px] font-bold md:inline">{firstName}</span>
+          <ChevronDown className="hidden size-4 text-muted-foreground md:block" aria-hidden />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" sideOffset={8} className="w-60">
+          <DropdownMenuLabel className="flex items-center gap-3 px-2 py-2">
+            <PlayerAvatar name={me.name} userId={me.id} size="md" />
+            <span className="min-w-0">
+              <span className="block truncate text-[14px] font-bold text-foreground">{me.name}</span>
+              <span className="block text-eyebrow text-muted-foreground uppercase">
+                {me.role === "coach" ? "Coach" : "Student"}
+              </span>
+            </span>
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {me.role === "student" && (
+            <DropdownMenuItem asChild>
+              <Link href="/student/schedule">
+                <CalendarDays /> My schedule
+              </Link>
+            </DropdownMenuItem>
+          )}
+          {me.role === "coach" && (
+            <DropdownMenuItem asChild>
+              <Link href="/coach/students">
+                <Users /> Students
+              </Link>
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem onSelect={() => setChangingPassword(true)}>
+            <KeyRound /> Change password
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            variant="destructive"
+            disabled={signingOut}
+            onSelect={(e) => {
+              e.preventDefault();
+              void logout();
+            }}
+          >
+            {signingOut ? <Loader2 className="animate-spin" /> : <LogOut />}
+            {signingOut ? "Signing out…" : "Sign out"}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <ChangePasswordDialog open={changingPassword} onOpenChange={setChangingPassword} />
+    </>
   );
 }
 

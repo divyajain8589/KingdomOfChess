@@ -244,14 +244,6 @@ export class TournamentsService {
     return this.participants(id);
   }
 
-  listStudents() {
-    return this.db
-      .select({ id: users.id, name: users.name, email: users.email })
-      .from(users)
-      .where(eq(users.role, 'student'))
-      .orderBy(asc(users.name));
-  }
-
   // ---------------------------------------------------------------- student writes
 
   async join(student: AuthUser, id: string) {

@@ -40,11 +40,11 @@ async function main() {
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
-  const insert = db.insert(users).values(SEED_USERS.map((u) => ({ ...u, passwordHash })));
-  // An explicit SEED_PASSWORD is the source of truth: changing it re-keys the existing seeded accounts.
-  await (process.env.SEED_PASSWORD
-    ? insert.onConflictDoUpdate({ target: users.email, set: { passwordHash } })
-    : insert.onConflictDoNothing({ target: users.email }));
+  // Starting password only: existing accounts keep theirs, since coaches manage passwords in the app.
+  await db
+    .insert(users)
+    .values(SEED_USERS.map((u) => ({ ...u, passwordHash })))
+    .onConflictDoNothing({ target: users.email });
 
   const all = await db.select().from(users);
   const byEmail = new Map(all.map((u) => [u.email, u]));
