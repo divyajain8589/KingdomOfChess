@@ -132,6 +132,9 @@
   /* ---- motion ---- */
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --animate-live-pulse: live-pulse 1.6s ease-in-out infinite;
+  --animate-clock-breathe: clock-breathe 1s ease-in-out infinite;
+  --animate-knight-hop: knight-hop 2.4s ease-in-out infinite;
 }
 
 /*
@@ -301,13 +304,97 @@
   * {
     @apply border-border outline-ring/50;
   }
-  body {
-    @apply bg-background text-foreground;
-  }
-  button:not(:disabled), [role="button"]:not(:disabled) {
-    cursor: pointer;
-  }
   html {
     @apply font-sans;
+  }
+  body {
+    @apply bg-background text-body font-medium text-foreground;
+    font-feature-settings: "ss01" 0;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply text-balance text-foreground;
+  }
+  :focus-visible {
+    outline: none;
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+/* ---- Academy Notebook utilities ---- */
+
+/* Orange section label. Write it with a real em dash: <p className="eyebrow">— Tournaments</p> */
+@utility eyebrow {
+  @apply text-eyebrow text-brand-orange-ink uppercase;
+}
+
+/* Brand chessboard texture. Tune with [--checker-color:...] and [--checker-size:...]. */
+@utility checker {
+  background-image: conic-gradient(
+    var(--checker-color, oklch(0.248 0.049 253.4 / 0.04)) 25%,
+    transparent 0 50%,
+    var(--checker-color, oklch(0.248 0.049 253.4 / 0.04)) 0 75%,
+    transparent 0
+  );
+  background-size: var(--checker-size, 28px) var(--checker-size, 28px);
+}
+
+/* Fade an element out towards its bottom edge (used on checker header bands). */
+@utility fade-bottom {
+  mask-image: linear-gradient(to bottom, black, transparent);
+}
+
+/* Full-opacity orange focus ring with an offset; use on any custom focusable. */
+@utility focus-ring {
+  @apply outline-none focus-visible:ring-3 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+}
+
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+@keyframes clock-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 oklch(0.538 0.189 24.9 / 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 6px oklch(0.538 0.189 24.9 / 0);
+  }
+}
+@keyframes conn-chip-in {
+  to {
+    opacity: 1;
+  }
+}
+@keyframes knight-hop {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0);
+  }
+  40% {
+    transform: translateY(-14px) rotate(-8deg);
+  }
+  60% {
+    transform: translateY(-14px) rotate(4deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

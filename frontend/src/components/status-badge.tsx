@@ -1,20 +1,56 @@
-import { Badge } from "@/components/ui/badge";
-import { STATUS_LABEL } from "@/lib/format";
 import type { TournamentStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-const STYLES: Record<TournamentStatus, string> = {
-  draft: "bg-muted text-muted-foreground",
-  open: "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-200",
-  ongoing: "bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-200",
-  completed: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200",
+const PILL: Record<TournamentStatus, { label: string; className: string; dot?: string }> = {
+  draft: { label: "Draft", className: "bg-surface-inset text-muted-foreground", dot: "bg-transparent ring-1 ring-current" },
+  open: { label: "Open to join", className: "bg-info-soft text-info" },
+  ongoing: { label: "Live now", className: "bg-brand-orange-soft text-brand-orange-ink", dot: "animate-live-pulse" },
+  completed: { label: "Finished", className: "bg-success-soft text-success" },
 };
 
-export function StatusBadge({ status }: { status: TournamentStatus }) {
+/** Human label for a tournament status, matching the pill ("Open to join", "Live now", ...). */
+export const statusPillLabel = (status: TournamentStatus) => PILL[status].label;
+
+/** Tournament status pill with a leading dot (pulses when live). Optional `label` overrides the text. */
+export function StatusPill({
+  status,
+  label,
+  className,
+}: {
+  status: TournamentStatus;
+  label?: string;
+  className?: string;
+}) {
+  const s = PILL[status];
   return (
-    <Badge variant="secondary" className={cn("border-transparent", STYLES[status])}>
-      {status === "ongoing" && <span className="size-1.5 animate-pulse rounded-full bg-current" />}
-      {STATUS_LABEL[status]}
-    </Badge>
+    <span
+      data-status={status}
+      className={cn(
+        "inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[12px] font-bold whitespace-nowrap",
+        s.className,
+        className,
+      )}
+    >
+      <span aria-hidden className={cn("size-1.5 rounded-full bg-current", s.dot)} />
+      {label ?? s.label}
+    </span>
   );
 }
+
+/** Orange "LIVE" pill with a pulsing navy dot, for individual games in progress. */
+export function LivePill({ className, label = "Live" }: { className?: string; label?: string }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full bg-brand-orange px-2.5 text-[11px] font-extrabold tracking-[0.12em] text-brand-orange-foreground uppercase",
+        className,
+      )}
+    >
+      <span aria-hidden className="size-1.5 animate-live-pulse rounded-full bg-brand-orange-foreground" />
+      {label}
+    </span>
+  );
+}
+
+/** @deprecated Use StatusPill. Kept so existing pages compile. */
+export const StatusBadge = StatusPill;
