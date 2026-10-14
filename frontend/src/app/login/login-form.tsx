@@ -27,9 +27,26 @@ const DEMO = [
 ] as const;
 
 // Inlined at build time. Set to "false" to hide the demo quick-fill buttons.
-const SHOW_DEMO = process.env.NEXT_PUBLIC_SHOW_DEMO_ACCOUNTS !== "false";
+const SHOW_DEMO = process.env.NEXT_PUBLIC_SHOW_DEMO_ACCOUNTS === "true";
 
 type Phase = "idle" | "pending" | "redirecting";
+
+/**
+ * Only follow paths on this origin, and only into the right area for this role. Resolving it as a URL
+ * catches tricks a prefix check misses, e.g. `/\evil.com`, which browsers treat as `//evil.com`.
+ */
+function safeNext(next: string | null, role: User["role"]): string | null {
+  if (!next?.startsWith("/")) return null;
+  let url: URL;
+  try {
+    url = new URL(next, window.location.origin);
+  } catch {
+    return null;
+  }
+  if (url.origin !== window.location.origin) return null;
+  if (url.pathname.startsWith(role === "coach" ? "/student" : "/coach")) return null;
+  return url.pathname + url.search + url.hash;
+}
 
 export function LoginForm() {
   const router = useRouter();
@@ -50,13 +67,7 @@ export function LoginForm() {
       const user = await api<User>("/auth/login", { method: "POST", body: creds });
       qc.setQueryData(qk.me, user);
       setPhase("redirecting");
-      const next = params.get("next");
-      // Only follow same-site relative paths, and only into the right area for this role.
-      const safeNext =
-        next && next.startsWith("/") && !next.startsWith("//") && !next.startsWith(user.role === "coach" ? "/student" : "/coach")
-          ? next
-          : null;
-      router.replace(safeNext ?? homeFor(user.role));
+      router.replace(safeNext(params.get("next"), user.role) ?? homeFor(user.role));
       router.refresh();
     } catch (err) {
       setError(

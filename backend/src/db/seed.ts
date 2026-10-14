@@ -23,6 +23,10 @@ const SEED_USERS = [
 
 async function main() {
   loadEnv();
+  // Demo accounts share a published password; never create them on a real deployment by accident.
+  if (process.env.NODE_ENV === 'production' && process.env.SEED_DEMO_DATA !== 'true') {
+    throw new Error('Refusing to seed demo accounts in production. Set SEED_DEMO_DATA=true for a demo stack.');
+  }
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error('DATABASE_URL is not set');
   const { db, pool } = createDb(url);

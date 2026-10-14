@@ -2,7 +2,7 @@
 #   web  -> http://localhost:3000
 #   api  -> http://localhost:4000/api/v1
 #   db   -> postgres (internal only)
-# The api container applies migrations and seeds demo data (idempotent) on every start.
+# The api container applies migrations and seeds demo data (idempotent) on every start (SEED_DEMO_DATA).
 
 services:
   db:
@@ -32,6 +32,9 @@ services:
       FRONTEND_URL: http://localhost:3000
       PORT: "4000"
       COOKIE_SECURE: "false"
+      # Local demo stack only: seed the password123 demo accounts and accept the dev JWT secret.
+      SEED_DEMO_DATA: "true"
+      ALLOW_INSECURE_DEV_SECRET: "true"
     ports:
       - "4000:4000"
     healthcheck:
@@ -48,6 +51,7 @@ services:
       args:
         # Baked into the client bundle; must be reachable from the browser, not the container network.
         NEXT_PUBLIC_API_URL: http://localhost:4000
+        NEXT_PUBLIC_SHOW_DEMO_ACCOUNTS: "true"
     environment:
       HOSTNAME: 0.0.0.0
       PORT: "3000"

@@ -21,7 +21,7 @@ docker compose up --build
 - Web app: http://localhost:3000
 - API: http://localhost:4000/api/v1 (health check: `/api/v1/health`)
 
-Postgres runs in a container. When the API container starts, it applies migrations and runs the seed, which is idempotent, before serving. To use your own JWT secret, run `JWT_SECRET=... docker compose up --build`.
+Postgres runs in a container. When the API container starts, it applies migrations and, because docker-compose sets `SEED_DEMO_DATA=true`, runs the idempotent demo seed before serving. To use your own JWT secret, run `JWT_SECRET=... docker compose up --build`.
 
 ## 2. Local setup (without Docker)
 
@@ -54,6 +54,9 @@ npm run dev                   # http://localhost:3000
 | `JWT_EXPIRES_IN_SECONDS` | backend | Session length (default 86400) |
 | `FRONTEND_URL` | backend | Browser origin of the web app, used for CORS on REST and Socket.IO |
 | `COOKIE_SECURE` | backend | `true` behind HTTPS |
+| `TRUST_PROXY` | backend | Number of reverse proxies in front of the API, so per-IP rate limits see the real client (default 0) |
+| `SEED_DEMO_DATA` | backend (Docker) | `true` makes the container seed the `password123` demo accounts on start. Leave unset in production; the seed refuses to run there without it |
+| `ALLOW_INSECURE_DEV_SECRET` | backend | `true` lets a production build boot with the placeholder JWT secret (local docker-compose only) |
 | `NEXT_PUBLIC_API_URL` | frontend | API URL as seen by the browser (built into the bundle at build time) |
 
 ### Seed accounts (password for all: `password123`)

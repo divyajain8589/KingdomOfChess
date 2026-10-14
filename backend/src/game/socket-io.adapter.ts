@@ -14,6 +14,8 @@ export class SocketIoAdapter extends IoAdapter {
     return super.createIOServer(port, {
       ...options,
       cors: { origin: this.frontendUrl, credentials: true },
+      // Every client event is a few small fields; the 1 MB default only invites abuse.
+      maxHttpBufferSize: 16 * 1024,
     });
   }
 }
