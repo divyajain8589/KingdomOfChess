@@ -52,6 +52,8 @@ services:
         # Baked into the client bundle; must be reachable from the browser, not the container network.
         NEXT_PUBLIC_API_URL: http://localhost:4000
         NEXT_PUBLIC_SHOW_DEMO_ACCOUNTS: "true"
+        # The Next server proxies /api/v1 to the API over the compose network.
+        API_PROXY_TARGET: http://api:4000
     environment:
       HOSTNAME: 0.0.0.0
       PORT: "3000"

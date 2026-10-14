@@ -42,6 +42,12 @@ export class AuthController {
     return { loggedOut: true };
   }
 
+  /** Short-lived token for the Socket.IO handshake (see TokenService). */
+  @Get('auth/socket-token')
+  async socketToken(@CurrentUser() user: AuthUser) {
+    return { token: await this.tokens.sign(user, 'socket') };
+  }
+
   @Get('me')
   me(@CurrentUser() user: AuthUser): Promise<AuthUser> {
     return this.auth.me(user.id);

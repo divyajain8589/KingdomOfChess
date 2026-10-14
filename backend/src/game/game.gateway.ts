@@ -49,9 +49,14 @@ export class GameGateway implements OnGatewayInit, OnGatewayDisconnect {
 
   afterInit(server: Server) {
     this.realtime.attach(server);
-    // Handshake auth: the same httpOnly cookie as REST. No valid session → connect_error.
+    // Handshake auth: a socket token from GET /auth/socket-token (the web app), or the session cookie
+    // when the client shares the API's site (local dev, scripts). No valid session → connect_error.
     server.use(async (socket, next) => {
-      const user = await this.tokens.verify(this.tokens.fromCookieHeader(socket.handshake.headers.cookie));
+      const { token } = (socket.handshake.auth ?? {}) as { token?: unknown };
+      const user =
+        typeof token === 'string'
+          ? await this.tokens.verify(token, 'socket')
+          : await this.tokens.verify(this.tokens.fromCookieHeader(socket.handshake.headers.cookie));
       if (!user) return next(new Error('UNAUTHORIZED'));
       socket.data.user = user;
       await socket.join(rooms.user(user.id));

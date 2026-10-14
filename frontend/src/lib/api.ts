@@ -1,5 +1,3 @@
-import { API_URL } from "./config";
-
 /** Mirrors the backend envelope: { success, data } | { success: false, error }. */
 export class ApiError extends Error {
   constructor(
@@ -19,9 +17,9 @@ type Envelope<T> =
 export async function api<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`${API_URL}/api/v1${path}`, {
+    // Same origin: next.config.ts proxies /api/v1 to the API, so the httpOnly cookie is first-party.
+    res = await fetch(`/api/v1${path}`, {
       method: init.method ?? "GET",
-      credentials: "include", // send the httpOnly auth cookie
       headers: init.body !== undefined ? { "Content-Type": "application/json" } : undefined,
       body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
     });

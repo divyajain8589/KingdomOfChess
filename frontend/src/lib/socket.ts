@@ -1,13 +1,25 @@
 import { io, type Socket } from "socket.io-client";
-import { ApiError } from "./api";
+import { api, ApiError } from "./api";
 import { API_URL } from "./config";
 
 let socket: Socket | null = null;
 
-/** One shared connection per tab. Auth rides on the httpOnly cookie (withCredentials). */
+/**
+ * One shared connection per tab, straight to the API. The session cookie can't be sent there when the API
+ * is on another site (and Safari blocks it anyway), so each (re)connect fetches a 60-second socket token.
+ */
 export function getSocket(): Socket {
   if (!socket) {
-    socket = io(API_URL, { withCredentials: true, autoConnect: false, transports: ["websocket", "polling"] });
+    socket = io(API_URL, {
+      autoConnect: false,
+      transports: ["websocket", "polling"],
+      auth: (cb) => {
+        api<{ token: string }>("/auth/socket-token").then(
+          ({ token }) => cb({ token }),
+          () => cb({}), // signed out: the handshake is refused and the app sends the user to /login
+        );
+      },
+    });
   }
   return socket;
 }

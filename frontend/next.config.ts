@@ -10,10 +10,17 @@ const securityHeaders = [
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()" },
 ];
 
+// Server-side address of the API for the /api/v1 proxy. Defaults to the browser-facing URL;
+// docker-compose overrides it with the container network address. Read at build time.
+const apiProxyTarget = process.env.API_PROXY_TARGET || process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+
 const nextConfig: NextConfig = {
   // Standalone output keeps the Docker image small.
   output: "standalone",
   poweredByHeader: false,
+  async rewrites() {
+    return [{ source: "/api/v1/:path*", destination: `${apiProxyTarget}/api/v1/:path*` }];
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

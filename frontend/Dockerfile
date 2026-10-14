@@ -14,7 +14,10 @@ WORKDIR /app
 # so the API URL must be supplied here (not at `docker run`).
 ARG NEXT_PUBLIC_API_URL=http://localhost:4000
 ARG NEXT_PUBLIC_SHOW_DEMO_ACCOUNTS=false
+# Where the server proxies /api/v1 (defaults to NEXT_PUBLIC_API_URL).
+ARG API_PROXY_TARGET
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
+    API_PROXY_TARGET=$API_PROXY_TARGET \
     NEXT_PUBLIC_SHOW_DEMO_ACCOUNTS=$NEXT_PUBLIC_SHOW_DEMO_ACCOUNTS \
     NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
