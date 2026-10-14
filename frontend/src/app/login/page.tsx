@@ -26,7 +26,6 @@ function MiniBoard() {
           })}
         </div>
       </div>
-      <p className="pb-4 font-mono text-[13px] text-primary-foreground/50">1. e4 e5 2. Nf3 …</p>
     </div>
   );
 }
@@ -50,7 +49,6 @@ export default function LoginPage() {
         <Logo variant="onNight" />
 
         <div className="lg:my-12">
-          <p className="mb-3 hidden text-eyebrow text-brand-orange uppercase lg:block">— Kingdom of Chess Academy</p>
           <Headline className="mt-5 max-w-[14ch] animate-in text-[30px] leading-[1.1] font-extrabold tracking-tight duration-500 fade-in slide-in-from-bottom-2 lg:mt-0 lg:max-w-[12ch] lg:text-display" />
           <p className="mt-4 hidden max-w-md text-[17px] text-primary-foreground/75 lg:block">
             Real games against your classmates, with real clocks and a live leaderboard your coach can follow.
