@@ -1,52 +1,29 @@
 "use client";
 
 import { Chess, type Square } from "chess.js";
-import { ArrowLeft, Eye, Flag, Handshake, WifiOff } from "lucide-react";
+import { ArrowLeft, ArrowUpDown, Eye } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useMemo, useState } from "react";
-import { Chessboard } from "react-chessboard";
-import { FindOpponent } from "@/components/find-opponent";
-import { ChessClock } from "@/components/live/chess-clock";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import { Board, type BoardHighlight } from "@/components/live/board";
+import { GameOver } from "@/components/live/game-over";
+import { IncomingDrawOffer, MatchControls } from "@/components/live/match-controls";
 import { MoveList } from "@/components/live/move-list";
+import { PlayerStrip } from "@/components/live/player-strip";
+import { PromotionPicker, type PromotionPiece } from "@/components/live/promotion-picker";
+import { TurnBanner, type TurnBannerMode } from "@/components/live/turn-banner";
 import { useConnectionState } from "@/components/socket-provider";
-import { ErrorState, LoadingState } from "@/components/states";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
+import { ErrorState, MatchSkeleton } from "@/components/states";
+import { LivePill, StatusPill } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useLiveMatch } from "@/hooks/use-live-match";
+import { errorMessage } from "@/lib/api";
 import { describeResult, outcomeFor } from "@/lib/format";
-import { useMe, useTournament } from "@/lib/queries";
+import { materialFromFen } from "@/lib/material";
+import { useMe } from "@/lib/queries";
 import type { Color, MatchState } from "@/lib/types";
-import { cn } from "@/lib/utils";
-
-type PromotionPiece = "q" | "r" | "b" | "n";
-
-const PROMOTIONS: { piece: PromotionPiece; name: string; white: string; black: string }[] = [
-  { piece: "q", name: "queen", white: "♕", black: "♛" },
-  { piece: "r", name: "rook", white: "♖", black: "♜" },
-  { piece: "b", name: "bishop", white: "♗", black: "♝" },
-  { piece: "n", name: "knight", white: "♘", black: "♞" },
-];
 
 /** True if moving from→to in this position is a legal pawn promotion. */
 function isPromotionMove(fen: string, from: string, to: string): boolean {
@@ -57,14 +34,42 @@ function isPromotionMove(fen: string, from: string, to: string): boolean {
   }
 }
 
+function findKing(fen: string, color: Color): string | null {
+  const board = new Chess(fen).board();
+  for (const row of board) {
+    for (const sq of row) {
+      if (sq && sq.type === "k" && sq.color === color[0]) return sq.square;
+    }
+  }
+  return null;
+}
+
+const firstName = (name: string) => name.split(/\s+/)[0] || name;
+
 export default function MatchPage() {
   const { id } = useParams<{ id: string }>();
   const me = useMe();
   const live = useLiveMatch(id);
 
-  if (live.isLoading || me.isPending) return <LoadingState rows={6} />;
+  if (live.isLoading || me.isPending) return <MatchSkeleton />;
   if (live.error || !live.state || !me.data) {
-    return <ErrorState error={live.error ?? me.error} onRetry={live.refetch} className="mx-auto max-w-md" />;
+    const err = live.error ?? me.error;
+    return (
+      <ErrorState
+        error={err}
+        onRetry={live.refetch}
+        title="We couldn't open this game"
+        description={`${errorMessage(err).replace(/\.?$/, ".")} It may have been removed, or the link is wrong.`}
+        action={
+          <Button asChild variant="ghost" size="lg">
+            <Link href={me.data?.role === "coach" ? "/coach" : "/student"}>
+              <ArrowLeft /> Back to tournaments
+            </Link>
+          </Button>
+        }
+        className="mx-auto mt-6 max-w-md"
+      />
+    );
   }
   return <Match live={live} state={live.state} userId={me.data.id} isCoach={me.data.role === "coach"} />;
 }
@@ -81,49 +86,59 @@ function Match({
   isCoach: boolean;
 }) {
   const conn = useConnectionState();
+  const connected = conn === "connected";
   const myColor: Color | null = state.white.id === userId ? "white" : state.black.id === userId ? "black" : null;
-  const orientation: Color = myColor ?? "white";
+  const [flipped, setFlipped] = useState(false);
+  const orientation: Color = myColor ?? (flipped ? "black" : "white");
   const isLive = state.status === "ongoing";
   const [viewPly, setViewPly] = useState<number | null>(null);
   const [selected, setSelected] = useState<Square | null>(null);
+  const boardColumnRef = useRef<HTMLDivElement>(null);
   const [promotionRequest, setPromotionRequest] = useState<{ from: string; to: string; fen: string } | null>(null);
 
-  // Position after each ply, for move-list navigation.
-  const fens = useMemo(() => {
+  // "Back online!" once the socket recovers after a drop (not on the first connect).
+  const prevConn = useRef(conn);
+  const wasConnected = useRef(conn === "connected");
+  useEffect(() => {
+    if (conn === "connected" && prevConn.current !== "connected" && wasConnected.current) toast.success("Back online!");
+    if (conn === "connected") wasConnected.current = true;
+    prevConn.current = conn;
+  }, [conn]);
+
+  // Position and last move after each ply, for move-list navigation.
+  const history = useMemo(() => {
     const c = new Chess();
-    const out = [c.fen()];
+    const fens = [c.fen()];
+    const lastMoves: ({ from: string; to: string } | null)[] = [null];
     for (const san of state.moves) {
-      c.move(san);
-      out.push(c.fen());
+      const m = c.move(san);
+      fens.push(c.fen());
+      lastMoves.push({ from: m.from, to: m.to });
     }
-    return out;
+    return { fens, lastMoves };
   }, [state.moves]);
 
   const reviewing = viewPly !== null && viewPly < state.moves.length;
-  const displayedFen = reviewing ? fens[viewPly] : (live.pendingFen ?? state.fen);
+  const displayedFen = reviewing ? history.fens[viewPly] : (live.pendingFen ?? state.fen);
   const myTurn = isLive && !!myColor && state.turn === myColor && !live.pendingFen;
-  const canInteract = myTurn && !reviewing && conn === "connected";
+  const canInteract = myTurn && !reviewing && connected;
 
   const legalTargets = useMemo(() => {
     if (!selected || !canInteract) return [];
-    return new Chess(state.fen).moves({ square: selected, verbose: true }).map((m) => m.to);
+    return new Chess(state.fen)
+      .moves({ square: selected, verbose: true })
+      .map((m) => ({ square: m.to as string, capture: !!m.captured }));
   }, [selected, canInteract, state.fen]);
 
-  // Colours for last move, images for check/legal-move dots, so the layers combine.
-  const squareStyles: Record<string, React.CSSProperties> = {};
-  const style = (sq: string, css: React.CSSProperties) => (squareStyles[sq] = { ...squareStyles[sq], ...css });
-  if (state.lastMove && !reviewing) {
-    style(state.lastMove.from, { backgroundColor: "rgba(249, 115, 22, 0.35)" });
-    style(state.lastMove.to, { backgroundColor: "rgba(249, 115, 22, 0.45)" });
-  }
-  if (state.inCheck && !reviewing) {
-    const kingSq = findKing(state.fen, state.turn);
-    if (kingSq) style(kingSq, { backgroundImage: "radial-gradient(circle, rgba(220,38,38,.85) 30%, transparent 75%)" });
-  }
-  if (selected) style(selected, { boxShadow: "inset 0 0 0 3px rgba(11, 58, 102, .8)" });
-  for (const sq of legalTargets) {
-    style(sq, { backgroundImage: "radial-gradient(circle, rgba(11,58,102,.35) 22%, transparent 24%)" });
-  }
+  const checkSquare = useMemo(() => {
+    if (reviewing) {
+      const c = new Chess(displayedFen);
+      return c.inCheck() ? findKing(displayedFen, c.turn() === "w" ? "white" : "black") : null;
+    }
+    return state.inCheck ? findKing(state.fen, state.turn) : null;
+  }, [reviewing, displayedFen, state.inCheck, state.fen, state.turn]);
+
+  const material = useMemo(() => materialFromFen(displayedFen), [displayedFen]);
 
   const ownsPiece = (pieceType: string) => !!myColor && pieceType[0] === myColor[0];
 
@@ -150,224 +165,173 @@ function Match({
     live.move(from, to, piece);
   }
 
-  const top = orientation === "white" ? "black" : "white";
-  const bottom = orientation;
+  const top: Color = orientation === "white" ? "black" : "white";
+  const bottom: Color = orientation;
   const player = (c: Color) => (c === "white" ? state.white : state.black);
-  const clockProps = (c: Color) => ({
-    ms: c === "white" ? state.clock.whiteMs : state.clock.blackMs,
-    running: state.clock.running === c,
-    receivedAt: live.receivedAt,
-    name: player(c).name + (player(c).id === userId ? " (you)" : ""),
-    sub: c === "white" ? "White" : "Black",
-    active: isLive && state.turn === c,
-  });
-
-  const opponentOffered = isLive && myColor && state.drawOfferBy && state.drawOfferBy !== myColor;
-  const iOffered = isLive && myColor && state.drawOfferBy === myColor;
-
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Link
-          href={isCoach ? `/coach/tournaments/${state.tournamentId}` : `/student/tournaments/${state.tournamentId}`}
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ArrowLeft className="size-4" /> {state.tournamentName}
-        </Link>
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="font-mono">
-            {state.timeControl}
-          </Badge>
-          {!myColor && (
-            <Badge variant="secondary">
-              <Eye /> Spectating
-            </Badge>
-          )}
-          {isLive ? <Badge className="bg-orange-500 text-white">LIVE</Badge> : <Badge variant="secondary">Finished</Badge>}
-        </div>
-      </div>
-
-      {conn !== "connected" && isLive && (
-        <div className="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-2 text-sm">
-          <WifiOff className="size-4 text-destructive" /> Connection lost — reconnecting. Clocks keep running on the server.
-        </div>
-      )}
-
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="mx-auto w-full max-w-[min(640px,calc(100vh-14rem))] space-y-2">
-          <ChessClock {...clockProps(top)} />
-          <div className={cn("overflow-hidden rounded-md shadow-sm", reviewing && "opacity-90 ring-2 ring-amber-400")}>
-            <Chessboard
-              options={{
-                id: `match-${state.matchId}`,
-                position: displayedFen,
-                boardOrientation: orientation,
-                allowDragging: canInteract && !pendingPromotion,
-                canDragPiece: ({ piece }) => canInteract && !pendingPromotion && ownsPiece(piece.pieceType),
-                onPieceDrop: ({ sourceSquare, targetSquare }) =>
-                  targetSquare && !pendingPromotion ? tryMove(sourceSquare, targetSquare) : false,
-                onPieceDrag: ({ square }) => setSelected(square as Square | null),
-                onSquareClick: ({ piece, square }) => {
-                  if (!canInteract || pendingPromotion) return;
-                  if (selected && legalTargets.includes(square as Square)) {
-                    tryMove(selected, square);
-                  } else if (piece && ownsPiece(piece.pieceType)) {
-                    setSelected(square as Square);
-                  } else {
-                    setSelected(null);
-                  }
-                },
-                squareStyles,
-                darkSquareStyle: { backgroundColor: "#6b8fb3" },
-                lightSquareStyle: { backgroundColor: "#eef2f7" },
-                animationDurationInMs: 150,
-              }}
-            />
-          </div>
-          <ChessClock {...clockProps(bottom)} />
-          <Dialog open={!!pendingPromotion} onOpenChange={(open) => !open && setPendingPromotion(null)}>
-            <DialogContent className="sm:max-w-xs" showCloseButton={false}>
-              <DialogHeader>
-                <DialogTitle>Promote pawn</DialogTitle>
-                <DialogDescription>Choose a piece for your pawn on {pendingPromotion?.to}.</DialogDescription>
-              </DialogHeader>
-              <div className="grid grid-cols-4 gap-2">
-                {PROMOTIONS.map((p) => (
-                  <Button
-                    key={p.piece}
-                    variant="outline"
-                    className="h-16"
-                    onClick={() => choosePromotion(p.piece)}
-                    aria-label={`Promote to ${p.name}`}
-                    title={p.name[0].toUpperCase() + p.name.slice(1)}
-                  >
-                    <span aria-hidden className="text-5xl leading-none">
-                      {myColor === "black" ? p.black : p.white}
-                    </span>
-                  </Button>
-                ))}
-              </div>
-              <DialogFooter>
-                <Button variant="ghost" onClick={() => setPendingPromotion(null)}>
-                  Cancel
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-          {reviewing && (
-            <div className="flex items-center justify-between rounded-md bg-amber-50 px-3 py-1.5 text-sm dark:bg-amber-950/40">
-              <span>
-                Reviewing move {viewPly} of {state.moves.length}
-              </span>
-              <Button size="xs" variant="outline" onClick={() => setViewPly(null)}>
-                Back to {isLive ? "live" : "final"} position
-              </Button>
-            </div>
-          )}
-        </div>
-
-        <div className="space-y-4">
-          {!isLive && <GameOver state={state} myColor={myColor} isCoach={isCoach} />}
-
-          {isLive && myColor && (
-            <Card>
-              <CardContent className="space-y-3">
-                <div className="text-center text-lg font-semibold">
-                  {live.pendingFen ? "Sending move…" : myTurn ? "Your move" : "Opponent's move"}
-                </div>
-                {opponentOffered && (
-                  <div className="space-y-2 rounded-md border border-sky-300 bg-sky-50 p-3 text-sm dark:border-sky-800 dark:bg-sky-950/40">
-                    <div className="font-medium">Your opponent offers a draw.</div>
-                    <div className="flex gap-2">
-                      <Button size="sm" onClick={() => live.respondDraw(true)}>
-                        Accept
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => live.respondDraw(false)}>
-                        Decline
-                      </Button>
-                    </div>
-                  </div>
-                )}
-                <div className="grid grid-cols-2 gap-2">
-                  <Button variant="outline" onClick={live.offerDraw} disabled={!!iOffered || conn !== "connected"}>
-                    <Handshake /> {iOffered ? "Draw offered" : "Offer draw"}
-                  </Button>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="outline" className="text-destructive" disabled={conn !== "connected"}>
-                        <Flag /> Resign
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Resign this game?</AlertDialogTitle>
-                        <AlertDialogDescription>Your opponent will be awarded the win.</AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Keep playing</AlertDialogCancel>
-                        <AlertDialogAction variant="destructive" onClick={live.resign}>
-                          Resign
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Moves</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <MoveList moves={state.moves} pgn={state.pgn} viewPly={viewPly} onView={setViewPly} />
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    </div>
+  const opponent = myColor ? player(myColor === "white" ? "black" : "white") : null;
+  const opponentName = opponent ? firstName(opponent.name) : "Your opponent";
+  const strip = (c: Color, className?: string) => (
+    <PlayerStrip
+      player={player(c)}
+      color={c}
+      isYou={player(c).id === userId}
+      material={material[c]}
+      className={className}
+      clock={{
+        ms: c === "white" ? state.clock.whiteMs : state.clock.blackMs,
+        running: state.clock.running === c,
+        receivedAt: live.receivedAt,
+        active: isLive && state.turn === c,
+        gameOver: !isLive,
+      }}
+    />
   );
-}
 
-function GameOver({ state, myColor, isCoach }: { state: MatchState; myColor: Color | null; isCoach: boolean }) {
-  const tournament = useTournament(state.tournamentId);
-  const canRequeue = !!myColor && tournament.data?.status === "ongoing";
+  const opponentOffered = isLive && !!myColor && !!state.drawOfferBy && state.drawOfferBy !== myColor;
+  const iOffered = isLive && !!myColor && state.drawOfferBy === myColor;
   const outcome = outcomeFor(state.result, myColor);
-  const headline =
-    outcome === "win" ? "You won! 🎉" : outcome === "loss" ? "Good game!" : outcome === "draw" ? "It's a draw" : "Game over";
 
-  return (
-    <Card
-      className={cn(
-        outcome === "win" && "border-emerald-400",
-        outcome === "loss" && "border-destructive/40",
-        outcome === "draw" && "border-sky-400",
-      )}
-    >
-      <CardContent className="space-y-3 text-center">
-        <div className="text-2xl font-bold">{headline}</div>
-        <div className="text-muted-foreground">{describeResult(state.result, state.termination)}</div>
-        {outcome === "loss" && <div className="text-sm">Every game makes you stronger — try the next one!</div>}
-        <div className="flex flex-col items-center gap-2 pt-1">
-          {canRequeue && <FindOpponent tournamentId={state.tournamentId} size="default" />}
-          <Button asChild variant="outline" className="w-full">
-            <Link href={isCoach ? `/coach/tournaments/${state.tournamentId}` : `/student/tournaments/${state.tournamentId}`}>
-              View leaderboard
-            </Link>
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
+  let banner: TurnBannerMode | null = null;
+  if (reviewing) {
+    banner = { kind: "reviewing", ply: viewPly, total: state.moves.length, live: isLive, onBack: () => setViewPly(null) };
+  } else if (isLive) {
+    if (!myColor) banner = { kind: "spectating", turn: state.turn, check: state.inCheck };
+    else if (live.pendingFen) banner = { kind: "sending" };
+    else if (myTurn) banner = { kind: state.inCheck ? "my-check" : "my-turn" };
+    else banner = state.inCheck ? { kind: "their-check", opponent: opponentName } : { kind: "thinking", opponent: opponentName };
+  }
 
-function findKing(fen: string, color: Color): string | null {
-  const board = new Chess(fen).board();
-  for (const row of board) {
-    for (const sq of row) {
-      if (sq && sq.type === "k" && sq.color === color[0]) return sq.square;
+  const highlight: BoardHighlight = reviewing
+    ? "reviewing"
+    : isLive
+      ? myTurn
+        ? "my-turn"
+        : null
+      : outcome === "win"
+        ? "win"
+        : outcome === "draw"
+          ? "draw"
+          : null;
+
+  function replayFromStart() {
+    setViewPly(0);
+    // Below lg the board sits above the game-over card; bring it back into view.
+    if (window.matchMedia("(max-width: 1023px)").matches) {
+      const smooth = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      boardColumnRef.current?.scrollIntoView({ block: "start", behavior: smooth ? "smooth" : "auto" });
     }
   }
-  return null;
+
+  const backHref = isCoach ? `/coach/tournaments/${state.tournamentId}` : `/student/tournaments/${state.tournamentId}`;
+
+  return (
+    <div className="space-y-3 sm:space-y-5">
+      {/* Top bar */}
+      <div className="flex h-12 items-center justify-between gap-3">
+        <Link
+          href={backHref}
+          className="focus-ring -ml-2 inline-flex h-9 min-w-0 items-center gap-1.5 rounded-full pr-3 pl-2 text-[13px] font-semibold text-muted-foreground transition-colors hover:bg-surface-inset hover:text-foreground"
+        >
+          <ArrowLeft className="size-4 shrink-0" aria-hidden />
+          <span className="truncate">{state.tournamentName}</span>
+        </Link>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="inline-flex h-7 items-center rounded-full bg-surface-inset px-2.5 font-mono text-[12px] font-bold tabular-nums">
+            <span className="sr-only">Time control </span>
+            {state.timeControl}
+          </span>
+          {!myColor && (
+            <>
+              <span className="inline-flex h-7 items-center gap-1.5 rounded-full bg-info-soft px-2.5 text-[12px] font-bold text-info">
+                <Eye className="size-3.5" aria-hidden /> Watching
+              </span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon-sm" aria-label="Flip board" onClick={() => setFlipped((f) => !f)}>
+                    <ArrowUpDown />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Flip board</TooltipContent>
+              </Tooltip>
+            </>
+          )}
+          {isLive ? <LivePill /> : <StatusPill status="completed" label="Finished" />}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-8">
+        {/* Board column: full bleed on phones. */}
+        <div ref={boardColumnRef} className="-mx-4 scroll-mt-20 sm:mx-auto sm:w-full sm:max-w-[min(680px,calc(100dvh-13rem))]">
+          {strip(top, "px-4 sm:px-0")}
+          <Board
+            id={`match-${state.matchId}`}
+            position={displayedFen}
+            orientation={orientation}
+            lastMove={reviewing ? history.lastMoves[viewPly] : state.lastMove}
+            checkSquare={checkSquare}
+            selected={selected}
+            legalTargets={legalTargets}
+            highlight={highlight}
+            interactive={canInteract}
+            reconnecting={isLive && !connected}
+            allowDragging={canInteract && !pendingPromotion}
+            canDragPiece={({ piece }) => canInteract && !pendingPromotion && ownsPiece(piece.pieceType)}
+            onPieceDrop={({ sourceSquare, targetSquare }) =>
+              targetSquare && !pendingPromotion ? tryMove(sourceSquare, targetSquare) : false
+            }
+            onPieceDrag={({ square }) => setSelected(square as Square | null)}
+            onSquareClick={({ piece, square }) => {
+              if (!canInteract || pendingPromotion) return;
+              if (selected && legalTargets.some((t) => t.square === square)) {
+                tryMove(selected, square);
+              } else if (piece && ownsPiece(piece.pieceType)) {
+                setSelected(square as Square);
+              } else {
+                setSelected(null);
+              }
+            }}
+          />
+          {strip(bottom, "px-4 sm:px-0")}
+          {myColor && (
+            <PromotionPicker
+              open={!!pendingPromotion}
+              color={myColor}
+              square={pendingPromotion?.to}
+              onChoose={choosePromotion}
+              onCancel={() => setPendingPromotion(null)}
+            />
+          )}
+        </div>
+
+        {/* Side panel (below the board on small screens). */}
+        <div className="space-y-4 lg:sticky lg:top-20">
+          {banner && <TurnBanner mode={banner} />}
+
+          {!isLive && (
+            <GameOver state={state} myColor={myColor} isCoach={isCoach} onReplay={replayFromStart} />
+          )}
+
+          {opponentOffered && (
+            <IncomingDrawOffer opponent={opponentName} disabled={!connected} onRespond={live.respondDraw} />
+          )}
+
+          {isLive && myColor && (
+            <MatchControls
+              opponent={opponentName}
+              connected={connected}
+              iOffered={iOffered}
+              onOfferDraw={live.offerDraw}
+              onResign={live.resign}
+            />
+          )}
+
+          <MoveList moves={state.moves} pgn={state.pgn} viewPly={viewPly} onView={setViewPly} />
+        </div>
+      </div>
+
+      <p className="sr-only" aria-live="polite">
+        {isLive ? "" : `Game over. ${describeResult(state.result, state.termination)}.`}
+      </p>
+    </div>
+  );
 }
