@@ -48,7 +48,7 @@ export const useTournamentMatches = (id: string) =>
   useQuery({ queryKey: qk.tournamentMatches(id), queryFn: () => api<MatchSummary[]>(`/tournaments/${id}/matches`) });
 
 export const useStudents = (enabled = true) =>
-  useQuery({ queryKey: qk.students, queryFn: () => api<(PlayerRef & { email: string })[]>("/students"), enabled });
+  useQuery({ queryKey: qk.students, queryFn: () => api<Student[]>("/students"), enabled });
 
 export const useSchedule = () => useQuery({ queryKey: qk.schedule, queryFn: () => api<Schedule>("/me/schedule") });
 
@@ -147,5 +147,32 @@ export function useLeaveTournament(id: string) {
   return useMutation({
     mutationFn: () => api<TournamentDetail>(`/tournaments/${id}/join`, { method: "DELETE" }),
     onSuccess: () => invalidate(id),
+  });
+}
+
+// ------------------------------------------------------------------ accounts
+
+export type Student = PlayerRef & { email: string };
+
+export function useCreateStudent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { name: string; email: string; password: string }) =>
+      api<Student>("/students", { method: "POST", body: input }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.students }),
+  });
+}
+
+export function useSetStudentPassword() {
+  return useMutation({
+    mutationFn: ({ id, password }: { id: string; password: string }) =>
+      api<Student>(`/students/${id}/password`, { method: "PATCH", body: { password } }),
+  });
+}
+
+export function useChangeMyPassword() {
+  return useMutation({
+    mutationFn: (input: { currentPassword: string; newPassword: string }) =>
+      api<{ changed: true }>("/me/password", { method: "PATCH", body: input }),
   });
 }

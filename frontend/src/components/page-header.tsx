@@ -81,7 +81,7 @@ export function PageHeader({
             {back.label}
           </Link>
         )}
-        {eyebrow && <p className="eyebrow mb-2">— {eyebrow}</p>}
+        {eyebrow && <p className="eyebrow mb-2">{eyebrow}</p>}
         <div className={cn(badge && "flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-3")}>
           <h1 className="text-[26px] leading-tight font-extrabold tracking-tight sm:text-h1">{title}</h1>
           {badge && <div className="shrink-0">{badge}</div>}

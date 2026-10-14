@@ -153,7 +153,7 @@ function JoinPanel({ t }: { t: TournamentDetail }) {
   return (
     <Card>
       <CardHeader className="gap-2">
-        <p className="eyebrow">— Registration open</p>
+        <p className="eyebrow">Registration open</p>
         <CardTitle className="text-h2">Want to play?</CardTitle>
         <CardDescription className="max-w-xl text-[15px]">
           Everyone plays everyone once. Games start when your coach begins the tournament.
@@ -260,7 +260,7 @@ function NextGamePanel({ t, me }: { t: TournamentDetail; me?: User }) {
       <CardContent className="space-y-5">
         {!searching && (
           <div className="space-y-2">
-            <p className="text-eyebrow text-brand-orange uppercase">— {hasGame ? "Game in progress" : "Your next game"}</p>
+            <p className="text-eyebrow text-brand-orange uppercase">{hasGame ? "Game in progress" : "Your next game"}</p>
             <h2 className="text-[26px] leading-tight font-extrabold tracking-tight text-primary-foreground sm:text-h1">
               {hasGame ? (
                 "Your game is on!"
@@ -349,7 +349,7 @@ function ChampionPanel({ t, me }: { t: TournamentDetail; me?: User }) {
           <CrownGlyph className="w-9 fill-gold" />
         </span>
         <div className="min-w-0 space-y-1.5">
-          <p className="text-eyebrow text-brand-orange uppercase">— Champion</p>
+          <p className="text-eyebrow text-brand-orange uppercase">Champion</p>
           {lb.isPending ? (
             <Skeleton className="h-8 w-64 bg-white/10" />
           ) : (
@@ -378,7 +378,7 @@ function MyGames({ tournamentId, userId }: { tournamentId: string; userId?: stri
   return (
     <section aria-labelledby="my-games" className="space-y-4">
       <div>
-        <p className="eyebrow mb-2">— Your results</p>
+        <p className="eyebrow mb-2">Your results</p>
         <h2 id="my-games" className="text-h2">
           My games
         </h2>

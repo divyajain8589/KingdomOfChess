@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
-import { StudentsController, TournamentsController } from './tournaments.controller';
+import { TournamentsController } from './tournaments.controller';
 import { TournamentsService } from './tournaments.service';
 
 @Module({
-  controllers: [TournamentsController, StudentsController],
+  controllers: [TournamentsController],
   providers: [TournamentsService],
   exports: [TournamentsService],
 })

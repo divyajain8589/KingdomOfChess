@@ -121,7 +121,7 @@ export function Board({
               <Loader2 className="mx-auto size-6 animate-spin text-primary" aria-hidden />
               <p className="mt-2 text-h3">Reconnecting…</p>
               <p className="mt-1 text-[13px] text-muted-foreground">
-                Hang tight. Your clock is safe on the server and the game will continue right where it left off.
+                Hang tight. The game is saved on the server and will continue right where it left off.
               </p>
             </div>
           </div>

@@ -148,7 +148,7 @@ export function GameOver({
       {outcome === "win" && <Confetti />}
       <div className="relative z-10 flex flex-col items-center px-5 pt-7 pb-5 sm:px-6">
         <div className="grid h-14 place-items-center">{art}</div>
-        <p className="mt-3 text-eyebrow text-brand-orange uppercase">— {eyebrow}</p>
+        <p className="mt-3 text-eyebrow text-brand-orange uppercase">{eyebrow}</p>
         <h2 className="mt-1.5 text-[36px] leading-[1.05] font-extrabold tracking-[-0.035em] text-primary-foreground sm:text-display">
           {title}
         </h2>

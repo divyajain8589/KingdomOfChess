@@ -155,7 +155,7 @@ function CoachTournaments() {
       <Dialog open={creating} onOpenChange={setCreating}>
         <DialogContent className="gap-0 p-0 max-sm:pb-0 sm:max-w-lg">
           <DialogHeader className="border-b border-border p-6 pr-14">
-            <p className="eyebrow">— New tournament</p>
+            <p className="eyebrow">New tournament</p>
             <DialogTitle>Set up a tournament</DialogTitle>
             <DialogDescription>Round robin: everyone plays everyone once.</DialogDescription>
           </DialogHeader>

@@ -12,7 +12,7 @@ const sans = Plus_Jakarta_Sans({
 const mono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Kingdom of Chess — Tournaments",
+  title: "Kingdom of Chess | Tournaments",
   description: "Live 1-on-1 tournament play for Kingdom of Chess students",
 };
 

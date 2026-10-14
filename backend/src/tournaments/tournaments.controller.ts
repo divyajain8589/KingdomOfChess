@@ -89,14 +89,3 @@ export class TournamentsController {
     return this.tournaments.leave(student, id);
   }
 }
-
-@Controller('students')
-export class StudentsController {
-  constructor(private readonly tournaments: TournamentsService) {}
-
-  @Roles('coach')
-  @Get()
-  list() {
-    return this.tournaments.listStudents();
-  }
-}

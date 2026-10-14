@@ -108,7 +108,7 @@ export function LeaderboardCard({
                     </button>
                   </TooltipTrigger>
                   <TooltipContent side="top" className="max-w-64 text-[12px] leading-snug font-medium normal-case">
-                    Sonneborn–Berger: the tiebreak. It adds up the scores of the players you beat, plus half for draws.
+                    Sonneborn–Berger tiebreak: the scores of every player you beat, plus half the scores of every player you drew with.
                   </TooltipContent>
                 </Tooltip>
               </TableHead>
@@ -171,7 +171,7 @@ function ChampionBanner({ lb }: { lb: Leaderboard }) {
           <CrownGlyph className="w-6 fill-gold" />
         </span>
         <div className="min-w-0">
-          <p className="text-eyebrow text-brand-orange uppercase">— Champion</p>
+          <p className="text-eyebrow text-brand-orange uppercase">Champion</p>
           {lb.winner ? (
             <p className="mt-1 text-h2 text-primary-foreground">
               {lb.winner.name} <span className="font-mono text-brand-orange">{pts(lb.winner.points)}</span>

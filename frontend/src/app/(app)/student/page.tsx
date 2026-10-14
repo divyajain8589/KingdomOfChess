@@ -174,7 +174,7 @@ function LiveCard({ t, entry }: { t: Tournament; entry?: ScheduleEntry }) {
   return (
     <Card className="border-t-4 border-t-brand-orange">
       <CardHeader className="gap-2">
-        <p className="eyebrow">— Live now</p>
+        <p className="eyebrow">Live now</p>
         <CardTitle className="text-h2">
           <Link href={href} className="focus-ring rounded-sm hover:underline hover:underline-offset-4">
             {t.name}
@@ -183,7 +183,7 @@ function LiveCard({ t, entry }: { t: Tournament; entry?: ScheduleEntry }) {
         <MetaLine>
           {t.timeControl}
           {formatDateTime(t.startsAt)}
-          {`${t.participantCount} players`}
+          {`${t.participantCount} ${t.participantCount === 1 ? "player" : "players"}`}
         </MetaLine>
       </CardHeader>
       <CardContent className="space-y-4">

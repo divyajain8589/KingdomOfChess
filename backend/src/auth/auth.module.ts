@@ -6,6 +6,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AuthController } from './auth.controller';
 import { JwtAuthGuard, RolesGuard } from './auth.guard';
 import { AuthService } from './auth.service';
+import { SessionCookieService } from './session-cookie.service';
 import { TokenService } from './token.service';
 
 const FIFTEEN_MINUTES = 15 * 60_000;
@@ -59,11 +60,12 @@ const loginEmail = (req: Record<string, any>) =>
   providers: [
     AuthService,
     TokenService,
+    SessionCookieService,
     // Order matters: authenticate first, then check roles, then count (so users are keyed by account).
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
-  exports: [TokenService],
+  exports: [TokenService, SessionCookieService],
 })
 export class AuthModule {}

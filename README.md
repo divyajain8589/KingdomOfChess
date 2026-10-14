@@ -119,7 +119,7 @@ All routes are under **`/api/v1`**: a global `api` prefix plus Nest URI versioni
 | 409 | Rule conflict: wrong status, already joined, live games |
 | 422 | Illegal move |
 
-**Auth.** `POST /auth/login` sets an **httpOnly, SameSite=Lax** cookie (`koc_token`) holding a JWT. Global guards then authenticate every route that isn't marked `@Public()` and enforce `@Roles(...)`.
+**Auth.** `POST /auth/login` sets an **httpOnly, SameSite=Lax** cookie (`koc_token`) holding a JWT. Each token carries the account's `token_version`; changing a password bumps it, so older sessions stop working. Global guards then authenticate every route that isn't marked `@Public()` and enforce `@Roles(...)`.
 
 | Method | Path | Role | |
 |---|---|---|---|
@@ -135,7 +135,10 @@ All routes are under **`/api/v1`**: a global `api` prefix plus Nest URI versioni
 | PATCH | `/tournaments/:id/status` | coach | `{ status }`: draft ⇄ open → ongoing → completed |
 | DELETE | `/tournaments/:id` | coach | only before it starts |
 | POST / DELETE | `/tournaments/:id/participants[/:userId]` | coach | add/remove a student (before start) |
-| GET | `/students` | coach | students to add |
+| GET | `/students` | coach | all student accounts |
+| POST | `/students` | coach | `{ name, email, password }` → new student account |
+| PATCH | `/students/:id/password` | coach | `{ password }`; signs that student out everywhere |
+| PATCH | `/me/password` | any | `{ currentPassword, newPassword }`; signs out other devices, refreshes this cookie |
 | POST / DELETE | `/tournaments/:id/join` | student | self-join / withdraw (while open) |
 | GET | `/matches/:id` | player or coach | full match state (board, clock, PGN) |
 | GET | `/me/matches?tournamentId=` | student | my match history |

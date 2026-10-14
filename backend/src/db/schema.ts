@@ -35,6 +35,8 @@ export const users = pgTable('users', {
   passwordHash: text('password_hash').notNull(),
   role: userRole('role').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  /** Bumped on every password change; sessions carry the version they were issued under. */
+  tokenVersion: integer('token_version').notNull().default(0),
 });
 
 export const tournaments = pgTable(

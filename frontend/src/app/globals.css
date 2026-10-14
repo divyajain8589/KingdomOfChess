@@ -327,7 +327,7 @@
 
 /* ---- Academy Notebook utilities ---- */
 
-/* Orange section label. Write it with a real em dash: <p className="eyebrow">— Tournaments</p> */
+/* Orange section label: <p className="eyebrow">Tournaments</p> (no leading dash). */
 @utility eyebrow {
   @apply text-eyebrow text-brand-orange-ink uppercase;
 }

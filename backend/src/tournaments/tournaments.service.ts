@@ -222,7 +222,7 @@ export class TournamentsService {
   async addParticipant(id: string, userId: string) {
     const t = await this.findOrThrow(id);
     if (t.status !== 'draft' && t.status !== 'open') {
-      throw conflict('LOCKED', 'Participants can only be added before the tournament starts');
+      throw conflict('LOCKED', 'Players can only be added before the tournament starts');
     }
     const [student] = await this.db.select().from(users).where(eq(users.id, userId)).limit(1);
     if (!student || student.role !== 'student') throw notFound('Student');
@@ -235,21 +235,13 @@ export class TournamentsService {
   async removeParticipant(id: string, userId: string) {
     const t = await this.findOrThrow(id);
     if (t.status !== 'draft' && t.status !== 'open') {
-      throw conflict('LOCKED', 'Participants can only be removed before the tournament starts');
+      throw conflict('LOCKED', 'Players can only be removed before the tournament starts');
     }
     await this.db
       .delete(tournamentParticipants)
       .where(and(eq(tournamentParticipants.tournamentId, id), eq(tournamentParticipants.userId, userId)));
     this.events.emit('tournament.changed', { tournamentId: id });
     return this.participants(id);
-  }
-
-  listStudents() {
-    return this.db
-      .select({ id: users.id, name: users.name, email: users.email })
-      .from(users)
-      .where(eq(users.role, 'student'))
-      .orderBy(asc(users.name));
   }
 
   // ---------------------------------------------------------------- student writes
@@ -302,7 +294,7 @@ export class TournamentsService {
         .where(and(eq(matches.tournamentId, id), eq(matches.status, 'ongoing')));
       if (live > 0) {
         if (!force) return [];
-        throw conflict('LIVE_MATCHES', `Wait for the ${live} live game(s) to finish before completing`);
+        throw conflict('LIVE_MATCHES', `Wait for the ${live} live ${live === 1 ? 'game' : 'games'} to finish before ending the tournament`);
       }
       const winner = pickWinner(await this.standings(id, tx));
       // Guarded update: only one caller can flip ongoing → completed.

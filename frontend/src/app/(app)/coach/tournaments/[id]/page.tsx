@@ -379,13 +379,13 @@ function TournamentActions({ t }: { t: TournamentDetail }) {
       <Dialog open={editing} onOpenChange={setEditing}>
         <DialogContent className="gap-0 p-0 max-sm:pb-0 sm:max-w-lg">
           <DialogHeader className="border-b border-border p-6 pr-14">
-            <p className="eyebrow">— Edit tournament</p>
+            <p className="eyebrow">Edit tournament</p>
             <DialogTitle>{t.name}</DialogTitle>
             <DialogDescription>
               {t.status === "ongoing"
                 ? "Games are under way, so the time control is locked."
                 : t.status === "draft"
-                  ? "Drafts are only visible to you until you open registration."
+                  ? "Students can't see drafts until you open registration."
                   : "Changes show up for students straight away."}
             </DialogDescription>
           </DialogHeader>

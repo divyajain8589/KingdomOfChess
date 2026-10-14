@@ -61,7 +61,7 @@ export function checkStatusTransition(
     return { code: 'BAD_TRANSITION', message: `Cannot move a tournament from ${from} to ${to}` };
   }
   if (to === 'ongoing' && participantCount < 2) {
-    return { code: 'TOO_FEW_PLAYERS', message: 'At least 2 participants are needed to start' };
+    return { code: 'TOO_FEW_PLAYERS', message: 'At least 2 players are needed to start' };
   }
   return null;
 }

@@ -92,9 +92,8 @@ export function LoginForm() {
 
   return (
     <div className="w-full">
-      <p className="eyebrow mb-2">— Welcome back</p>
       <h1 className="text-[26px] leading-tight font-extrabold tracking-tight sm:text-h1">Sign in to play</h1>
-      <p className="mt-2 text-muted-foreground">Use the email and password from your coach.</p>
+      <p className="mt-2 text-muted-foreground">Use the email and password provided by your coach.</p>
 
       <form onSubmit={submit} noValidate className="mt-6 space-y-4">
         {error && (

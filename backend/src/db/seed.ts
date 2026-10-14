@@ -9,7 +9,7 @@ import { tournamentParticipants, tournaments, users } from './schema';
  * ready to be matched, one open for self-registration, one draft).
  * Safe to run repeatedly — existing rows are left alone. `--reset` wipes all data first.
  */
-const PASSWORD = 'password123';
+const DEMO_PASSWORD = 'password123';
 
 const SEED_USERS = [
   { email: 'coach@koc.test', name: 'Coach Anand', role: 'coach' as const },
@@ -27,6 +27,9 @@ async function main() {
   if (process.env.NODE_ENV === 'production' && process.env.SEED_DEMO_DATA !== 'true') {
     throw new Error('Refusing to seed demo accounts in production. Set SEED_DEMO_DATA=true for a demo stack.');
   }
+  // SEED_PASSWORD gives the seeded accounts a private password instead of the published one.
+  const password = process.env.SEED_PASSWORD || DEMO_PASSWORD;
+  if (password.length < 8) throw new Error('SEED_PASSWORD must be at least 8 characters');
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error('DATABASE_URL is not set');
   const { db, pool } = createDb(url);
@@ -36,7 +39,8 @@ async function main() {
     console.log('Wiped existing data');
   }
 
-  const passwordHash = await bcrypt.hash(PASSWORD, 10);
+  const passwordHash = await bcrypt.hash(password, 10);
+  // Starting password only: existing accounts keep theirs, since coaches manage passwords in the app.
   await db
     .insert(users)
     .values(SEED_USERS.map((u) => ({ ...u, passwordHash })))
@@ -63,7 +67,7 @@ async function main() {
         },
         {
           name: 'Junior Rapid Cup',
-          description: 'Registration is open — join from the student dashboard.',
+          description: 'Registration is open. Join from the student dashboard.',
           timeControlMinutes: 10,
           incrementSeconds: 5,
           startsAt: new Date(Date.now() + 2 * day),
@@ -71,7 +75,7 @@ async function main() {
           createdById: coach.id,
         },
         {
-          name: 'Monsoon Classical (draft)',
+          name: 'Monsoon Classical',
           description: 'Still being planned; students cannot see drafts.',
           timeControlMinutes: 15,
           incrementSeconds: 10,
@@ -90,7 +94,8 @@ async function main() {
   }
 
   await pool.end();
-  console.log(`Seeded ${SEED_USERS.length} users (password: ${PASSWORD}) and demo tournaments`);
+  const shown = password === DEMO_PASSWORD ? DEMO_PASSWORD : 'from SEED_PASSWORD';
+  console.log(`Seeded ${SEED_USERS.length} users (password: ${shown}) and demo tournaments`);
 }
 
 main().catch((err) => {

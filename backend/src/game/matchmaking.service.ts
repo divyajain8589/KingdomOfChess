@@ -150,7 +150,7 @@ export class MatchmakingService {
         this.queuedIn.set(waiter.userId, tournamentId);
         this.broadcastWaiting(tournamentId);
       }
-      throw new AppException(HttpStatus.CONFLICT, 'PAIRING_FAILED', 'Could not start the game — please try again');
+      throw new AppException(HttpStatus.CONFLICT, 'PAIRING_FAILED', 'Could not start the game. Please try again.');
     } finally {
       this.pairing.delete(user.id);
       this.pairing.delete(waiter.userId);
