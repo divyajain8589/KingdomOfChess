@@ -108,7 +108,7 @@ export function LeaderboardCard({
                     </button>
                   </TooltipTrigger>
                   <TooltipContent side="top" className="max-w-64 text-[12px] leading-snug font-medium normal-case">
-                    Sonneborn–Berger: the tiebreak. It adds up the scores of the players you beat, plus half for draws.
+                    Sonneborn–Berger tiebreak: the scores of every player you beat, plus half the scores of every player you drew with.
                   </TooltipContent>
                 </Tooltip>
               </TableHead>

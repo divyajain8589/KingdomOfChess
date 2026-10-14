@@ -212,7 +212,7 @@ export function TournamentForm({
             <div role="radiogroup" aria-labelledby="t-status-label" className="grid grid-cols-2 gap-1 rounded-xl bg-surface-inset p-1">
               {(
                 [
-                  ["draft", "Save as draft", "Only you can see it"],
+                  ["draft", "Save as draft", "Hidden from students"],
                   ["open", "Open for students now", "They can join straight away"],
                 ] as const
               ).map(([value, label, sub]) => (

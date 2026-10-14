@@ -66,7 +66,7 @@ async function main() {
         },
         {
           name: 'Junior Rapid Cup',
-          description: 'Registration is open — join from the student dashboard.',
+          description: 'Registration is open. Join from the student dashboard.',
           timeControlMinutes: 10,
           incrementSeconds: 5,
           startsAt: new Date(Date.now() + 2 * day),
@@ -74,7 +74,7 @@ async function main() {
           createdById: coach.id,
         },
         {
-          name: 'Monsoon Classical (draft)',
+          name: 'Monsoon Classical',
           description: 'Still being planned; students cannot see drafts.',
           timeControlMinutes: 15,
           incrementSeconds: 10,

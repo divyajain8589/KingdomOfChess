@@ -183,7 +183,7 @@ function LiveCard({ t, entry }: { t: Tournament; entry?: ScheduleEntry }) {
         <MetaLine>
           {t.timeControl}
           {formatDateTime(t.startsAt)}
-          {`${t.participantCount} players`}
+          {`${t.participantCount} ${t.participantCount === 1 ? "player" : "players"}`}
         </MetaLine>
       </CardHeader>
       <CardContent className="space-y-4">
