@@ -1,0 +1,66 @@
+# One-command local stack: `docker compose up --build`
+#   web  -> http://localhost:3000
+#   api  -> http://localhost:4000/api/v1
+#   db   -> postgres (internal only)
+# The api container applies migrations and seeds demo data (idempotent) on every start (SEED_DEMO_DATA).
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: kingdom_chess
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d kingdom_chess"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  api:
+    build: ./backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@db:5432/kingdom_chess
+      JWT_SECRET: ${JWT_SECRET:-dev-only-insecure-jwt-secret-change-me-in-production-0123456789}
+      JWT_EXPIRES_IN_SECONDS: "86400"
+      FRONTEND_URL: http://localhost:3000
+      PORT: "4000"
+      COOKIE_SECURE: "false"
+      # Local demo stack only: seed the password123 demo accounts and accept the dev JWT secret.
+      SEED_DEMO_DATA: "true"
+      ALLOW_INSECURE_DEV_SECRET: "true"
+    ports:
+      - "4000:4000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4000/api/v1/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        # Baked into the client bundle; must be reachable from the browser, not the container network.
+        NEXT_PUBLIC_API_URL: http://localhost:4000
+        NEXT_PUBLIC_SHOW_DEMO_ACCOUNTS: "true"
+    environment:
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+volumes:
+  pgdata:

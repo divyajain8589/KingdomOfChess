@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "matches_pair_once_uq" ON "matches" USING btree ("tournament_id",least("white_id", "black_id"),greatest("white_id", "black_id"));
